@@ -121,24 +121,25 @@ def w_pawn(pos):
     return fea
 
 
-for row in range(8):
-    for col in range(8):
-        pos = "abcdefgh"[col] + "12345678"[row]
+for row in "12345678":
+    for col in "abcdefgh":
+        pos = col + row
         fea["R"][pos] = rook(pos)
         fea["B"][pos] = biship(pos)
         fea["Q"][pos] = queen(pos)
         fea["K"][pos] = king(pos)
         fea["N"][pos] = knight(pos)
 
-for row in range(1, 7):
-    for col in range(7):
-        pos = "abcdefgh"[col] + "12345678"[row]
+for row in "234567":
+    for col in "abcdefgh":
+        pos = col + row
         fea["p"][pos] = b_pawn(pos)
         fea["P"][pos] = w_pawn(pos)
 
-for row in range(8):
-    for col in range(8):
-        pos = "abcdefgh"[col] + "12345678"[row]
+
+for row in "12345678":
+    for col in "abcdefgh":
+        pos = col + row
         fea["blank"][pos] = {}
         resi = []
         for i in range(col, 8):
