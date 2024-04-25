@@ -2,9 +2,157 @@ from time import time
 import json
 from copy import deepcopy
 
-ds_path = "C:/Users/17818/Music/chess_engine.py/feasible_moves.json"
-with open(ds_path, "r", encoding="UTF-8") as f:
-    fea = json.load(f)
+
+def cal_pos(pos, vec, steps):
+    col = "abcdefgh".index(pos[0]) + steps * vec[0]
+    row = "12345678".index(pos[1]) + steps * vec[1]
+    if col in range(0, 8) and row in range(0, 8):
+        return "abcdefgh"[col] + "12345678"[row]
+    else:
+        return None
+
+
+def rook(pos):
+    fea = []
+    for vec in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+        _fea = []
+        for steps in range(1, 8):
+            des = cal_pos(pos, vec, steps)
+            if des:
+                _fea.append(des)
+            else:
+                break
+        if _fea != []:
+            fea.append(_fea)
+    return fea
+
+
+def biship(pos):
+    fea = []
+    for vec in [(1, 1), (-1, -1), (-1, 1), (1, -1)]:
+        _fea = []
+        for steps in range(1, 8):
+            des = cal_pos(pos, vec, steps)
+            if des:
+                _fea.append(des)
+            else:
+                break
+        if _fea != []:
+            fea.append(_fea)
+    return fea
+
+
+def queen(pos):
+    fea = []
+    for vec in [(1, 1), (-1, -1), (-1, 1), (1, -1), (-1, 0), (1, 0), (0, -1), (0, 1)]:
+        _fea = []
+        for steps in range(1, 8):
+            des = cal_pos(pos, vec, steps)
+            if des:
+                _fea.append(des)
+            else:
+                break
+        if _fea != []:
+            fea.append(_fea)
+    return fea
+
+
+def king(pos):
+    fea = []
+    for vec in [(1, 1), (-1, -1), (-1, 1), (1, -1), (-1, 0), (1, 0), (0, -1), (0, 1)]:
+        des = cal_pos(pos, vec, 1)
+        if des:
+            fea.append(des)
+    return fea
+
+
+def knight(pos):
+    fea = []
+    col, row = "abcdefgh".index(pos[0]), "12345678".index(pos[1])
+    for des in [(row + 2, col + 1), (row + 2, col - 1), (row - 2, col + 1), (row - 2, col - 1), (row + 1, col + 2), (row + 1, col - 2), (row - 1, col + 2), (row - 1, col - 2)]:
+        if des[0] in range(0, 8) and des[1] in range(0, 8):
+            fea.append("abcdefgh"[des[1]] + "12345678"[des[0]])
+    return fea
+
+
+def b_pawn(pos):
+    fea = []
+    straight = []
+    capture = []
+
+    des = cal_pos(pos, (0, -1), 1)
+    straight.append(des)
+
+    if pos[1] == "7":
+        des = cal_pos(pos, (0, -1), 2)
+        straight.append(des)
+
+    for vec in [(-1, -1), (1, -1)]:
+        des = cal_pos(pos, vec, 1)
+        if des:
+            capture.append(des)
+
+    fea.append(straight)
+    fea.append(capture)
+    return fea
+
+
+def w_pawn(pos):
+    fea = []
+    straight = []
+    capture = []
+
+    des = cal_pos(pos, (0, 1), 1)
+    straight.append(des)
+
+    if pos[1] == "2":
+        des = cal_pos(pos, (0, 1), 2)
+        straight.append(des)
+
+    for vec in [(-1, 1), (1, 1)]:
+        des = cal_pos(pos, vec, 1)
+        if des:
+            capture.append(des)
+
+    fea.append(straight)
+    fea.append(capture)
+    return fea
+
+
+fea = {"R": {}, "B": {}, "N": {}, "K": {}, "Q": {}, "p": {}, "P": {}}
+
+for row in "12345678":
+    for col in "abcdefgh":
+        pos = col + row
+        fea["R"][pos] = rook(pos)
+        fea["B"][pos] = biship(pos)
+        fea["Q"][pos] = queen(pos)
+        fea["K"][pos] = king(pos)
+        fea["N"][pos] = knight(pos)
+
+for row in "234567":
+    for col in "abcdefgh":
+        pos = col + row
+        fea["p"][pos] = b_pawn(pos)
+        fea["P"][pos] = w_pawn(pos)
+
+fea["blank"] = {}
+for row in "12345678":
+    for col in "abcdefgh":
+        pos = col + row
+        fea["blank"][pos] = {}
+        resi = []
+        for i in range("abcdefgh".index(col), 8):
+            resi.append("abcdefgh"[i] + row)
+        for i in range(len(resi)):
+            fea["blank"][pos][str(i + 1)] = resi[: i + 1]
+
+fea["castle"] = {
+    "K": [["e1", "f1", "g1"], ["f1", "g1"]],
+    "Q": [["e1", "d1", "c1"], ["b1", "d1", "c1"]],
+    "k": [["e8", "f8", "g8"], ["f8", "g8"]],
+    "q": [["e8", "d8", "c8"], ["b8", "d8", "c8"]],
+}
 
 
 def is_fen_legal(fen):
@@ -96,7 +244,7 @@ def is_fen_legal(fen):
 def conv_fen(fen):
     fen = fen.split()
     hori, vert = 7, 0
-    board = {"blank": [], "w": [], "b": [], "pieces": {}, "castle": [], "passer": fen[3], "K": "", "k": ""}
+    board = {"blank": [], "w": [], "b": [], "pieces": {}, "castle": [], "passer": fen[3], "K": "", "k": "", "turn": fen[1]}
 
     for i in fen[0]:
         if i == "/":
@@ -315,11 +463,13 @@ def take_a_move(board, move, own_side):
             symbol, sqr, target = move[0], move[1:3], move[4:6]
         else:
             symbol, sqr, target = move[0], move[1:3], move[3:5]
+            board["blank"].remove(target)
 
         board[own_side].remove(sqr)
         board[own_side].append(target)
 
         board["blank"].append(sqr)
+
         del board["pieces"][sqr]
 
         if "=" in move:
@@ -368,16 +518,94 @@ def take_a_move(board, move, own_side):
     return board
 
 
-fen = "rn3rk1/8/8/8/8/8/8/R3K2R w KQ - 1 1"
+def format_moves(board, legal_moves):
+    formatted = {}
+    repe = {}
+
+    test = list(board["pieces"].values())
+    index = "RNBQK" if board["turn"] == "w" else "rnbqk"
+    for i in index:
+        if i in test:
+            test.remove(i)
+
+    for hori in "abcdefgh":
+        for vert in "12345678":
+            repe[hori + vert] = []
+
+    for move in legal_moves:
+        if move in ["O-O-O", "O-O"]:
+            formatted[move] = move
+        elif move[0] == "P":
+            if move[3] != "x":
+                formatted[move] = move[3:]
+            else:
+                formatted[move] = move[1] + "x" + move[4:]
+        elif move[0] == "K":
+            formatted[move] = "K" + move[3:]
+
+        else:
+            if move[0] in test:
+                repe[move[-2:]].append(move)
+            else:
+                formatted[move] = move[0] + move[3:]
+
+    for sqr in repe.keys():
+        length = len(repe[sqr])
+
+        if length == 1:
+            move = repe[sqr][0]
+            formatted[move] = move[0] + move[3:]
+
+        elif length > 1:
+            for i in repe[sqr]:
+                flag = ""
+
+                for j in repe[sqr]:
+                    if i != j and i[0] == j[0]:
+                        flag += "0"
+                        if i[1] == j[1]:
+                            flag += "1"
+
+                if "0" in flag:
+                    if "1" in flag:
+                        formatted[i] = i
+                    else:
+                        formatted[i] = i[0:2] + i[3:]
+                else:
+                    formatted[i] = i[0] + i[3:]
+    return formatted
+
+
+def gen_nodes(board):
+    layer = {}
+    legal_moves = show_legal_moves(board, board["turn"])
+    formatted = format_moves(board, legal_moves)
+
+    for move in legal_moves:
+        _board = take_a_move(board, move, board["turn"])
+        _check = check(_board)
+        oppo_side = "b" if board["turn"] == "w" else "w"
+        if _check[board["turn"]]:
+            continue
+        elif _check[oppo_side]:
+            layer[formatted[move] + "+"] = _board
+        else:
+            layer[formatted[move]] = _board
+
+    return layer
+
+
+fen = "k4N2/8/8/q7/2Q5/8/1B6/KN6 w - - 1 1"
 
 
 def foo(fen):
     board = conv_fen(fen)
     legal_moves = show_legal_moves(board, "w")
-    for i in legal_moves:
-        take_a_move(board, i, "w")
+    print(gen_nodes(board))
+    # print(len(gen_nodes(board)))
 
 
-from vfunc import *
+foo(fen)
+# from vfunc import *
 
-vfunc(foo, (fen,))
+# vfunc(foo, (fen,))

@@ -1,4 +1,4 @@
-from fen import *
+from models import *
 
 
 def test_is_fen_legal():
