@@ -2,7 +2,7 @@ import json
 
 ds_path = "C:/Users/17818/Music/chess_engine.py/feasible_moves.json"
 
-fea = {"R": {}, "B": {}, "N": {}, "K": {}, "Q": {}, "p": {}, "P": {}, "blank": {}}
+fea = {"R": {}, "B": {}, "N": {}, "K": {}, "Q": {}, "p": {}, "P": {}}
 
 
 def cal_pos(pos, vec, steps):
@@ -136,17 +136,23 @@ for row in "234567":
         fea["p"][pos] = b_pawn(pos)
         fea["P"][pos] = w_pawn(pos)
 
-
+fea["blank"] = {}
 for row in "12345678":
     for col in "abcdefgh":
         pos = col + row
         fea["blank"][pos] = {}
         resi = []
-        for i in range(col, 8):
-            resi.append("abcdefgh"[i] + "12345678"[row])
+        for i in range("abcdefgh".index(col), 8):
+            resi.append("abcdefgh"[i] + row)
         for i in range(len(resi)):
             fea["blank"][pos][str(i + 1)] = resi[: i + 1]
 
+fea["castle"] = {
+    "K": [["e1", "f1", "g1"], ["f1", "g1"]],
+    "Q": [["e1", "d1", "c1"], ["b1", "d1", "c1"]],
+    "k": [["e8", "f8", "g8"], ["f8", "g8"]],
+    "q": [["e8", "d8", "c8"], ["b8", "d8", "c8"]],
+}
 
 with open(ds_path, "w", encoding="UTF-8") as f:
     json.dump(fea, f, indent=4, ensure_ascii=False)
