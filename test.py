@@ -8,7 +8,6 @@ def test_is_fen_legal():
     else:
         print(True)
 
-
 def test_can_castle():
     fen = input("paste the FEN:")
     if is_fen_legal(fen):

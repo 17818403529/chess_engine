@@ -1,6 +1,8 @@
-from time import time
+from time import time, sleep
 import json
 from copy import deepcopy
+from random import choice
+import os
 
 
 def cal_pos(pos, vec, steps):
@@ -276,10 +278,10 @@ def conv_fen(fen):
     return board
 
 
-def show_legal_moves(board, turn):
+def show_legal_moves(board):
     legal_moves = []
-    oppo_side = "w" if turn == "b" else "b"
-    for sqr in board[turn]:
+    oppo_side = "w" if board["turn"] == "b" else "b"
+    for sqr in board[board["turn"]]:
         symbol = board["pieces"][sqr]
         _symbol = symbol.upper()
         if symbol in "Pp":
@@ -288,6 +290,7 @@ def show_legal_moves(board, turn):
             fea_moves = fea[symbol.upper()][sqr]
 
         if symbol in "RBQrbq":
+            # Rock, Biship, Queen
             for direc in fea_moves:
                 for i in direc:
                     if i in board["blank"]:
@@ -299,6 +302,7 @@ def show_legal_moves(board, turn):
                         break
 
         elif symbol in "Kk":
+            # King
             for i in fea_moves:
                 if i in board["blank"]:
                     legal_moves.append(_symbol + sqr + i)
@@ -306,6 +310,7 @@ def show_legal_moves(board, turn):
                     legal_moves.append(_symbol + sqr + "x" + i)
 
         elif symbol in "Nn":
+            # Knight
             for i in fea_moves:
                 if i in board["blank"]:
                     legal_moves.append(_symbol + sqr + i)
@@ -313,9 +318,11 @@ def show_legal_moves(board, turn):
                     legal_moves.append(_symbol + sqr + "x" + i)
 
         else:
+            # pawns
             for i in fea_moves[0]:
                 if i in board["blank"]:
                     if i[1] in "18":
+                        # pawn promotion
                         for asc in "RNBQ":
                             legal_moves.append(_symbol + sqr + i + "=" + asc)
                     else:
@@ -326,6 +333,7 @@ def show_legal_moves(board, turn):
             for i in fea_moves[1]:
                 if i in board[oppo_side]:
                     if i[1] in "18":
+                        # pawn promotion
                         for asc in "RNBQ":
                             legal_moves.append(_symbol + sqr + "x" + i + "=" + asc)
                     else:
@@ -347,7 +355,7 @@ def check(board):
 def is_reachable(board, target, side):
     if target in board[side]:
         return False
-
+        
     for sqr in board[side]:
         symbol = board["pieces"][sqr]
 
@@ -405,12 +413,13 @@ def can_castle(board, oppo_side):
     return result
 
 
-def take_a_move(board, move, own_side):
+def take_a_move(board, move):
     board = deepcopy(board)
-    oppo_side = "w" if own_side == "b" else "b"
+    oppo_side = "w" if board["turn"] == "b" else "b"
 
     if move in ["O-O", "O-O-O"]:
-        if own_side == "w":
+        # castling kings 
+        if board["turn"] == "w":
             symbol = "K"
             if move == "O-O":
                 sqr, target = "e1", "g1"
@@ -433,12 +442,14 @@ def take_a_move(board, move, own_side):
 
         board["blank"].append(sqr)
         board["blank"].remove(target)
-        board[own_side].append(target)
-        board[own_side].remove(sqr)
+        board[board["turn"]].append(target)
+        print(sqr)
+        board[board["turn"]].remove(sqr)
         del board["pieces"][sqr]
         board["pieces"][target] = symbol
 
-        if own_side == "w":
+        # castling rocks 
+        if board["turn"] == "w":
             symbol = "R"
             if move == "O-O":
                 sqr, target = "h1", "f1"
@@ -453,20 +464,21 @@ def take_a_move(board, move, own_side):
 
         board["blank"].append(sqr)
         board["blank"].remove(target)
-        board[own_side].append(target)
-        board[own_side].remove(sqr)
+        board[board["turn"]].append(target)
+        board[board["turn"]].remove(sqr)
         del board["pieces"][sqr]
         board["pieces"][target] = symbol
 
     else:
+        # normal moves and eat passers
         if "x" in move:
             symbol, sqr, target = move[0], move[1:3], move[4:6]
         else:
             symbol, sqr, target = move[0], move[1:3], move[3:5]
             board["blank"].remove(target)
 
-        board[own_side].remove(sqr)
-        board[own_side].append(target)
+        board[board["turn"]].remove(sqr)
+        board[board["turn"]].append(target)
 
         board["blank"].append(sqr)
 
@@ -478,43 +490,50 @@ def take_a_move(board, move, own_side):
             board["pieces"][target] = symbol
 
         if symbol in "Pp" and target == board["passer"]:
-            if turn == "w":
-                passer = target[0] + (target[1] - 1)
+            # eat passers-by
+            if board["turn"] == "w":
+                passer = target[0] + "4"
             else:
-                passer = target[0] + (target[1] + 1)
+                passer = target[0] + "5"
             del board["pieces"][passer]
-            del board[oppo_side][passer]
+            board[oppo_side].remove(passer)
 
         elif "x" in move:
             board[oppo_side].remove(target)
 
         if symbol in "Kk":
+            # castling is not possible after the king has moved
             board[symbol] = target
-
-            castle = board["castle"]
-            board["castle"] = ""
-            if symbol == "K":
+            
+            if symbol == "k":
                 for i in "kq":
                     if i in board["castle"]:
-                        board["castle"] += i
+                        board["castle"].remove(i)
             else:
                 for i in "KQ":
                     if i in board["castle"]:
-                        board["castle"] += i
+                         board["castle"].remove(i)
 
         elif symbol in "Rr":
-            if symbol == "R" and sqr == "a1" and "K" in board["castle"]:
-                board["castle"].remove("K")
-            elif symbol == "R" and sqr == "h1" and "Q" in board["castle"]:
+            # castling is segmentally not possible after the rock has moved
+            if symbol == "R" and sqr == "a1" and "Q" in board["castle"]:
                 board["castle"].remove("Q")
-            elif symbol == "r" and sqr == "a8" and "k" in board["castle"]:
-                board["castle"].remove("k")
-            elif symbol == "r" and sqr == "h8" and "q" in board["castle"]:
+            elif symbol == "R" and sqr == "h1" and "K" in board["castle"]:
+                board["castle"].remove("K")
+            elif symbol == "r" and sqr == "a8" and "q" in board["castle"]:
                 board["castle"].remove("q")
+            elif symbol == "r" and sqr == "h8" and "k" in board["castle"]:
+                board["castle"].remove("k")
 
-        if board["castle"] == "":
-            board["castle"] = "-"
+    board["passer"] = "-"
 
+    if move[0] == "P" and move[2] == "2" and move[4] == "4":
+        board["passer"] = move[1] + "3"
+
+    if move[0] == "p" and move[2] == "7" and move[4] == "5":
+        board["passer"] = move[1] + "6"
+
+    board["turn"] = "b" if board["turn"] == "w" else "w"
     return board
 
 
@@ -578,34 +597,51 @@ def format_moves(board, legal_moves):
 
 def gen_nodes(board):
     layer = {}
-    legal_moves = show_legal_moves(board, board["turn"])
+    legal_moves = show_legal_moves(board)
     formatted = format_moves(board, legal_moves)
 
     for move in legal_moves:
-        _board = take_a_move(board, move, board["turn"])
-        _check = check(_board)
+        _board = take_a_move(board, move)
+        is_checked = check(_board)
         oppo_side = "b" if board["turn"] == "w" else "w"
-        if _check[board["turn"]]:
+        if is_checked[board["turn"]]:
             continue
-        elif _check[oppo_side]:
+        elif is_checked[oppo_side]:
             layer[formatted[move] + "+"] = _board
         else:
             layer[formatted[move]] = _board
 
     return layer
 
-
-fen = "k4N2/8/8/q7/2Q5/8/1B6/KN6 w - - 1 1"
-
-
-def foo(fen):
+def gui(fen, frame=1):
     board = conv_fen(fen)
-    legal_moves = show_legal_moves(board, "w")
-    print(gen_nodes(board))
-    # print(len(gen_nodes(board)))
+
+    while True:
+        nodes = gen_nodes(board)
+        legal_moves = list(nodes.keys())
+        if legal_moves == []:
+            print("#")
+            break
+        else:
+            move = choice(legal_moves)
+        board = nodes[move]
+        sleep(frame)
+        os.system("cls")
+        print(move)
+        for j in "87654321":
+            for i in "abcdefgh":
+                pos = i + j
+                if pos in board["blank"]:
+                    print("-", end="")
+                else:
+                    if pos in board["b"]:
+                        print(board["pieces"][pos].lower(), end="")
+                    else:
+                        print(board["pieces"][pos], end="")
+                if i == "h":
+                    print(" ")
+        print(board["pieces"])
 
 
-foo(fen)
-# from vfunc import *
-
-# vfunc(foo, (fen,))
+fen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
+#gui(fen)
