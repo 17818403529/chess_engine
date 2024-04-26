@@ -71,7 +71,16 @@ def king(pos):
 def knight(pos):
     fea = []
     col, row = "abcdefgh".index(pos[0]), "12345678".index(pos[1])
-    for des in [(row + 2, col + 1), (row + 2, col - 1), (row - 2, col + 1), (row - 2, col - 1), (row + 1, col + 2), (row + 1, col - 2), (row - 1, col + 2), (row - 1, col - 2)]:
+    for des in [
+        (row + 2, col + 1),
+        (row + 2, col - 1),
+        (row - 2, col + 1),
+        (row - 2, col - 1),
+        (row + 1, col + 2),
+        (row + 1, col - 2),
+        (row - 1, col + 2),
+        (row - 1, col - 2),
+    ]:
         if des[0] in range(0, 8) and des[1] in range(0, 8):
             fea.append("abcdefgh"[des[1]] + "12345678"[des[0]])
     return fea
@@ -162,7 +171,16 @@ def is_fen_legal(fen):
     if len(fen) != 6:
         return False
 
-    packed = [list("eeeeeeee"), list("eeeeeeee"), list("eeeeeeee"), list("eeeeeeee"), list("eeeeeeee"), list("eeeeeeee"), list("eeeeeeee"), list("eeeeeeee")]
+    packed = [
+        list("eeeeeeee"),
+        list("eeeeeeee"),
+        list("eeeeeeee"),
+        list("eeeeeeee"),
+        list("eeeeeeee"),
+        list("eeeeeeee"),
+        list("eeeeeeee"),
+        list("eeeeeeee"),
+    ]
     row = ""
     kings = {"k": 0, "K": 0}
     hori, vert = 8, 0
@@ -246,7 +264,17 @@ def is_fen_legal(fen):
 def conv_fen(fen):
     fen = fen.split()
     hori, vert = 7, 0
-    board = {"blank": [], "w": [], "b": [], "pieces": {}, "castle": [], "passer": fen[3], "K": "", "k": "", "turn": fen[1]}
+    board = {
+        "blank": [],
+        "w": [],
+        "b": [],
+        "pieces": {},
+        "castle": [],
+        "passer": fen[3],
+        "K": "",
+        "k": "",
+        "turn": fen[1],
+    }
 
     for i in fen[0]:
         if i == "/":
@@ -355,7 +383,7 @@ def check(board):
 def is_reachable(board, target, side):
     if target in board[side]:
         return False
-        
+
     for sqr in board[side]:
         symbol = board["pieces"][sqr]
 
@@ -418,7 +446,7 @@ def take_a_move(board, move):
     oppo_side = "w" if board["turn"] == "b" else "b"
 
     if move in ["O-O", "O-O-O"]:
-        # castling kings 
+        # castling kings
         if board["turn"] == "w":
             symbol = "K"
             if move == "O-O":
@@ -439,16 +467,17 @@ def take_a_move(board, move):
             for i in "kq":
                 if i in board["castle"]:
                     board["castle"].remove(i)
+        board[symbol] = target
 
         board["blank"].append(sqr)
         board["blank"].remove(target)
         board[board["turn"]].append(target)
-        print(sqr)
+        print(move)
         board[board["turn"]].remove(sqr)
         del board["pieces"][sqr]
         board["pieces"][target] = symbol
 
-        # castling rocks 
+        # castling rocks
         if board["turn"] == "w":
             symbol = "R"
             if move == "O-O":
@@ -487,32 +516,38 @@ def take_a_move(board, move):
         if "=" in move:
             board["pieces"][target] = move[-1]
         else:
-            board["pieces"][target] = symbol
+            if board["turn"] == "w":
+                board["pieces"][target] = symbol
+            else:
+                board["pieces"][target] = symbol.lower()
 
         if symbol in "Pp" and target == board["passer"]:
             # eat passers-by
             if board["turn"] == "w":
-                passer = target[0] + "4"
-            else:
                 passer = target[0] + "5"
+            else:
+                passer = target[0] + "4"
             del board["pieces"][passer]
             board[oppo_side].remove(passer)
 
         elif "x" in move:
             board[oppo_side].remove(target)
 
-        if symbol in "Kk":
+        if symbol == "K":
             # castling is not possible after the king has moved
-            board[symbol] = target
-            
-            if symbol == "k":
-                for i in "kq":
+            if board["turn"] == "w":
+                board["K"] = target
+            else:
+                board["k"] = target
+
+            if board["turn"] == "w":
+                for i in "KQ":
                     if i in board["castle"]:
                         board["castle"].remove(i)
             else:
-                for i in "KQ":
+                for i in "kq":
                     if i in board["castle"]:
-                         board["castle"].remove(i)
+                        board["castle"].remove(i)
 
         elif symbol in "Rr":
             # castling is segmentally not possible after the rock has moved
@@ -613,6 +648,7 @@ def gen_nodes(board):
 
     return layer
 
+
 def gui(fen, frame=1):
     board = conv_fen(fen)
 
@@ -644,4 +680,4 @@ def gui(fen, frame=1):
 
 
 fen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
-#gui(fen)
+# gui(fen)

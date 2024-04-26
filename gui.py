@@ -19,7 +19,7 @@ class EngineThread(QThread):
         self.signal = signal
 
     def run(self):
-        fen = "6k1/8/8/5q2/Q7/8/8/2K5 w - - 0 1"
+        fen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
         board = conv_fen(fen)
 
         while True:
@@ -31,7 +31,8 @@ class EngineThread(QThread):
             else:
                 move = choice(legal_moves)
             board = nodes[move]
-            sleep(1)
+            print(board["turn"], move)
+            sleep(0.3)
             self.signal.emit(json.dumps(board))
 
 
@@ -58,19 +59,16 @@ class MyWin(QWidget):
             label.setAlignment(Qt.AlignCenter)
             self.table.setCellWidget(vert, hori, label)
 
-
         for sqr in board["pieces"].keys():
             hori, vert = "abcdefgh".index(sqr[0]), "87654321".index(sqr[1])
             symbol = board["pieces"][sqr]
             side = "w" if symbol in "RNBQKP" else "b"
             symbol = symbol.lower() if side == "b" else symbol
             img_path = pieces_path + "{}\\{}.png".format(side, symbol)
-            print(board["pieces"])
             label = QLabel("")
             label.setAlignment(Qt.AlignCenter)
             label.setPixmap(QPixmap(img_path).scaled(40, 40))
             self.table.setCellWidget(vert, hori, label)
-        print("\n")
 
     def InitWindow(self):
         self.setWindowTitle(self.title)
@@ -104,14 +102,14 @@ class MyWin(QWidget):
             for hori in range(8):
                 if vert % 2 == 0:
                     if hori % 2 == 1:
-                        cell_bc = QColor(232, 232, 232)
+                        cell_bc = QColor(242, 242, 242)
                     else:
-                        cell_bc = QColor(156, 156, 156)
+                        cell_bc = QColor(206, 206, 206)
                 else:
                     if hori % 2 == 1:
-                        cell_bc = QColor(156, 156, 156)
+                        cell_bc = QColor(206, 206, 206)
                     else:
-                        cell_bc = QColor(232, 232, 232)
+                        cell_bc = QColor(242, 242, 242)
                 self.table.setItem(hori, vert, QTableWidgetItem())
                 self.table.item(hori, vert).setBackground(cell_bc)
 
