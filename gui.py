@@ -9,11 +9,18 @@ from PyQt5.QtGui import *
 from PyQt5.QtCore import *
 from PyQt5 import *
 
-from chess_engine.lib import *
+import pygame
+
+pygame.mixer.init() 
+
+
+
+#from chess_engine.lib import *
+from lib import *
 
 pieces_path = os.getcwd() + "\\pieces\\"
 fen = """
-rn3bnr/pp1ppk1p/2b2p2/6pP/1Pp1P3/3P1QP1/P1P4P/RNB1KBNR w KQ g6 0 1
+rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1
 """
 
 
@@ -23,13 +30,15 @@ class Chess(QThread):
         self.move_list = []
         self.signal = signal
         self.init_fen = fen
+        self.chess_dict = gen_chess_dict()
+        
 
     def run(self):
         fen = self.init_fen
         while True:
-            board = convert(fen)
-            legal_moves = show_legal_moves(fen)
-            move = engine(fen)
+            board = convert(fen, self.chess_dict)
+            legal_moves = gather_legal_moves(board, self.chess_dict)
+            move = engine(fen, self.chess_dict)
             if move in legal_moves.values():
                 for key in legal_moves.keys():
                     if legal_moves[key] == move:
@@ -38,8 +47,9 @@ class Chess(QThread):
             else:
                 return False
 
-            board = take_a_move(board, _move)
+            board = take_a_move(board, _move, self.chess_dict)
             fen = gen_fen(board)
+            print(fen)
             self.signal.emit(json.dumps(board))
 
 
@@ -56,21 +66,29 @@ class VBoard(QWidget):
         }
         self.square_size = 81
         self.piece_size = 58
-        self.piece_style = "sketching"
+        self.piece_style = "alpha"
         self.piece_image_dir = os.getcwd() + "\\pieces\\{}\\".format(self.piece_style)
-
+        
+        self.move = pygame.mixer.Sound(os.getcwd() + "\\sound\\move.wav")
+        
         self.load_piece_imgs()
         self.signal.connect(self.refresh_board)
         self.init_window()
 
     def load_piece_imgs(self):
         self.piece_imgs = {}
+        if self.piece_style == "sketching":
+            suffix = "png"
+        else:
+            suffix = "svg"
+            self.piece_size = 75
+            
         for symbol in "rnbqkp":
-            img_path = self.piece_image_dir + "b{}.png".format(symbol)
+            img_path = self.piece_image_dir + "b{}.{}".format(symbol, suffix)
             self.piece_imgs[symbol] = QPixmap(img_path)
 
         for symbol in "RNBQKP":
-            img_path = self.piece_image_dir + "w{}.png".format(symbol)
+            img_path = self.piece_image_dir + "w{}.{}".format(symbol, suffix)
             self.piece_imgs[symbol] = QPixmap(img_path)
 
     def init_window(self):
@@ -125,21 +143,22 @@ class VBoard(QWidget):
 
         for hori in range(8):
             for vert in range(8):
-                sqr = "abcdefgh"[hori] + "87654321"[vert]
+                square = "abcdefgh"[hori] + "87654321"[vert]
                 label = QLabel("")
 
-                if sqr not in board["blank"]:
+                if square not in board["blank"]:
                     # put piece at a square if it is not blank
-                    symbol = board["pieces"][sqr]
+                    symbol = board["pieces"][square]
                     side = "w" if symbol in "RNBQKP" else "b"
                     symbol = symbol.lower() if side == "b" else symbol
                     # load the chess image file
-
-                    img_path = self.piece_image_dir + "{}.png".format(side + symbol)
-                    label.setPixmap(self.piece_imgs[symbol].scaled(self.piece_size, self.piece_size))
+                    label.setPixmap(
+                        self.piece_imgs[symbol].scaled(self.piece_size, self.piece_size)
+                    )
 
                 label.setAlignment(Qt.AlignCenter)
                 self.board.setCellWidget(vert, hori, label)
+        self.move.play()
 
 
 if __name__ == "__main__":

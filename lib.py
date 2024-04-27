@@ -292,7 +292,6 @@ def convert(fen, chess_dict):
             if hori > 8:
                 return False
             board["blank"] += chess_dict["blank"][square][str(int(i))]
-            
 
         elif i in "rbnqkpRBNQKP":
             # alter the packed when meets with a piece
@@ -364,7 +363,7 @@ def convert(fen, chess_dict):
             flag = False
             pawn = "p" if board["turn"] == "w" else "P"
             oppo_side = "w" if board["turn"] == "w" else "b"
-            for square in chess_dict["passer_nbr"]:
+            for square in chess_dict["passer_nbr"][passer]:
                 if square in board[oppo_side]:
                     if board["pieces"][square] == pawn:
                         flag = True
@@ -403,10 +402,10 @@ def is_reachable(board, target, side, chess_dict):
     return False
 
 
-def is_checked(board):
+def is_checked(board, chess_dict):
     result = {"w": False, "b": False}
-    result["w"] = is_reachable(board, board["K"], "b")
-    result["b"] = is_reachable(board, board["k"], "w")
+    result["w"] = is_reachable(board, board["K"], "b", chess_dict)
+    result["b"] = is_reachable(board, board["k"], "w", chess_dict)
     return result
 
 
@@ -481,7 +480,7 @@ def gather_unchecked_moves(board, chess_dict):
             continue
 
         for square in chess_dict["castle"][i][0]:
-            if is_reachable(board, square, oppo_side):
+            if is_reachable(board, square, oppo_side, chess_dict):
                 infeasible += i
                 break
 
@@ -548,7 +547,10 @@ def take_a_move(board, move, chess_dict):
             symbol, square, target = move[0], move[1:3], move[4:6]
         else:
             symbol, square, target = move[0], move[1:3], move[3:5]
-            board["blank"].remove(target)
+        board["blank"].remove(target)
+
+        if board["turn"] == "b":
+            symbol = symbol.lower()
 
         board[board["turn"]].remove(square)
         board[board["turn"]].append(target)
@@ -601,11 +603,19 @@ def take_a_move(board, move, chess_dict):
 
     board["passer"] = "-"
 
+    pawn = "p" if oppo_side == "b" else "P"
     if move[0] == "P" and move[2] == "2" and move[4] == "4":
-        board["passer"] = move[1] + "3"
+        passer = move[1] + "3"
+        for square in chess_dict["passer_nbr"][passer]:
+            if square in board[oppo_side]:
+                if board["pieces"][square] == pawn:
+                    board["passer"] = move[1] + "3"
 
     if move[0] == "p" and move[2] == "7" and move[4] == "5":
-        board["passer"] = move[1] + "6"
+        for square in chess_dict["passer_nbr"][passer]:
+            if square in board[oppo_side]:
+                if board["pieces"][square] == pawn:
+                    board["passer"] = move[1] + "3"
 
     board["turn"] = "b" if board["turn"] == "w" else "w"
     return board
@@ -673,14 +683,13 @@ def format_moves(board, unchecked):
     return formatted
 
 
-def gather_legal_moves(fen, chess_dict):
-    board = convert(fen, chess_dict)
+def gather_legal_moves(board, chess_dict):
     unchecked = gather_unchecked_moves(board, chess_dict)
     legal_moves = []
 
     for move in unchecked:
-        _board = take_a_move(board, move)
-        _is_checked = is_checked(_board)
+        _board = take_a_move(board, move, chess_dict)
+        _is_checked = is_checked(_board, chess_dict)
         oppo_side = "b" if board["turn"] == "w" else "w"
         if _is_checked[board["turn"]]:
             continue
@@ -718,22 +727,21 @@ def gen_fen(board):
     return fen
 
 
-# def engine(fen):
-#     sleep(0.25)
-#     abbr = show_legal_moves(fen)
-#     move = choice(list(abbr.values()))
-#     return move
+def engine(fen, chess_dict):
+    sleep(0.25)
+    board = convert(fen, chess_dict)
+    abbr = gather_legal_moves(board, chess_dict)
+    move = choice(list(abbr.values()))
+    return move
 
 
-fen = "rn1q1bnr/pp1p1p1p/2bk4/Q1p2p1p/4P3/2P5/PP1P1PPP/RN2K1NR w KQ - 0 1"
+fen = "rnbqkbnr/pppp1ppp/4p3/8/6P1/2N5/PPPPPP1P/R1BQKBNR b KQkq g3 0 1"
 
 chess_dict = gen_chess_dict()
 board = convert(fen, chess_dict)
-_fen = gen_fen(board)
-# print(board)
-if _fen!=fen:
-    print(fen)
-    print(fen)
+print(board)
+# legal_moves = gather_legal_moves(board, chess_dict)
+# print(legal_moves)
 
-# # while True:
-# #     print(engine(fen))
+# from vfunc import *
+# vfunc(gen_fen,(board,))
