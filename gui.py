@@ -1,120 +1,129 @@
 import sys
+import os
+import json
+
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui import *
 from PyQt5.QtCore import *
 from PyQt5 import *
-import os
-from time import sleep
-from random import choice
+
 from models import *
-import json
 
-pieces_path = "C:\\Users\\17818\\Music\\chess_engine\\pieces\\"
+pieces_path = os.getcwd() + "\\pieces\\"
+fen = """
+rn3bnr/pp1ppk1p/2b2p2/6pP/1Pp1P3/3P1QP1/P1P4P/RNB1KBNR w KQ g6 0 1
+"""
 
 
-class EngineThread(QThread):
-
+class Chess(QThread):
     def __init__(self, signal):
         super().__init__()
+        self.move_list = []
         self.signal = signal
+        self.init_fen = fen
 
     def run(self):
-        fen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
-        board = conv_fen(fen)
-
+        fen = self.init_fen
         while True:
-            nodes = gen_nodes(board)
-            legal_moves = list(nodes.keys())
-            if legal_moves == []:
-                print("#")
-                break
+            board = conv_fen(fen)
+            legal_moves = show_legal_moves(fen)
+            move = engine(fen)
+            if move in legal_moves.values():
+                for key in legal_moves.keys():
+                    if legal_moves[key] == move:
+                        _move = key
+                        break
             else:
-                move = choice(legal_moves)
-            board = nodes[move]
-            print(board["turn"], move)
-            sleep(0.3)
+                return False
+
+            board = take_a_move(board, _move)
+            fen = gen_fen(board)
             self.signal.emit(json.dumps(board))
 
 
-class MyWin(QWidget):
+class Vchess(QWidget):
 
     signal = pyqtSignal(str)
 
     def __init__(self):
         super().__init__()
         self.title = "VChess"
-        self.top = 480
-        self.left = 200
-        self.width = 720
-        self.height = 600
-        self.InitWindow()
+        self.board_style = {
+            "light": QColor(206, 206, 206),
+            "bold": QColor(242, 242, 242),
+        }
+        self.signal.connect(self.refresh_board)
+        self.init_window()
 
-    def move(self, signal):
-
-        board = json.loads(signal)
-
-        for sqr in board["blank"]:
-            hori, vert = "abcdefgh".index(sqr[0]), "87654321".index(sqr[1])
-            label = QLabel("")
-            label.setAlignment(Qt.AlignCenter)
-            self.table.setCellWidget(vert, hori, label)
-
-        for sqr in board["pieces"].keys():
-            hori, vert = "abcdefgh".index(sqr[0]), "87654321".index(sqr[1])
-            symbol = board["pieces"][sqr]
-            side = "w" if symbol in "RNBQKP" else "b"
-            symbol = symbol.lower() if side == "b" else symbol
-            img_path = pieces_path + "{}\\{}.png".format(side, symbol)
-            label = QLabel("")
-            label.setAlignment(Qt.AlignCenter)
-            label.setPixmap(QPixmap(img_path).scaled(40, 40))
-            self.table.setCellWidget(vert, hori, label)
-
-    def InitWindow(self):
+    def init_window(self):
         self.setWindowTitle(self.title)
-        self.setGeometry(self.top, self.left, self.width, self.height)
-        self.creatingTables()
-        self.vBoxLayout = QVBoxLayout()
-        self.vBoxLayout.addWidget(self.table)
-        self.setLayout(self.vBoxLayout)
+        self.setGeometry(480, 200, 800, 720)
 
+        self.draw_board()
         self.show()
+        self.chess_thread = Chess(self.signal)
+        self.chess_thread.start()
 
-        self.engine_thread = EngineThread(self.signal)
-        self.engine_thread.start()
-        self.signal.connect(self.move)
+    def draw_board(self):
 
-    def creatingTables(self):
+        # set the size and placement, whether to show grid
+        self.board = QTableWidget(8, 8, self)
+        self.board.setGeometry(5, 5, 680, 690)
+        self.board.setFrameShape(QFrame.Box)
+        self.board.setShowGrid(True)
 
-        self.table = QTableWidget(8, 8, self)
-        self.table.setShowGrid(True)
+        # set the header(the coordinate) font to bold
+        font = self.board.horizontalHeader().font()
+        font.setBold(True)
+        self.board.horizontalHeader().setFont(font)
+        font = self.board.verticalHeader().font()
+        font.setBold(True)
+        self.board.verticalHeader().setFont(font)
+
         for i in range(8):
-            self.table.setRowHeight(i, 64)
-            self.table.setColumnWidth(i, 64)
+            # set the square size
+            self.board.setRowHeight(i, 81)
+            self.board.setColumnWidth(i, 81)
 
-        for i in range(8):
-            cell_text = QTableWidgetItem("ABCDEFGH"[i])
-            self.table.setHorizontalHeaderItem(i, cell_text)
+            # draw the header
+            cell_text = QTableWidgetItem("abcdefgh"[i])
+            self.board.setHorizontalHeaderItem(i, cell_text)
             cell_text = QTableWidgetItem("87654321"[i])
-            self.table.setVerticalHeaderItem(i, cell_text)
+            self.board.setVerticalHeaderItem(i, cell_text)
+
+        # fill different colors for different grids
 
         for vert in range(8):
             for hori in range(8):
-                if vert % 2 == 0:
-                    if hori % 2 == 1:
-                        cell_bc = QColor(242, 242, 242)
-                    else:
-                        cell_bc = QColor(206, 206, 206)
+                self.board.setItem(hori, vert, QTableWidgetItem())
+                if (vert + hori) % 2 == 1:
+                    color = self.board_style["light"]
                 else:
-                    if hori % 2 == 1:
-                        cell_bc = QColor(206, 206, 206)
-                    else:
-                        cell_bc = QColor(242, 242, 242)
-                self.table.setItem(hori, vert, QTableWidgetItem())
-                self.table.item(hori, vert).setBackground(cell_bc)
+                    color = self.board_style["bold"]
+                self.board.item(hori, vert).setBackground(color)
+
+    def refresh_board(self, signal):
+        # refresh board after one certain move
+        board = json.loads(signal)
+
+        for hori in range(8):
+            for vert in range(8):
+                sqr = "abcdefgh"[hori] + "87654321"[vert]
+                label = QLabel("")
+
+                if sqr not in board["blank"]:
+                    # put piece at a square if it is not blank
+                    symbol = board["pieces"][sqr]
+                    side = "w" if symbol in "RNBQKP" else "b"
+                    symbol = symbol.lower() if side == "b" else symbol
+                    img_path = pieces_path + "{}.png".format(side + symbol)
+                    label.setPixmap(QPixmap(img_path).scaled(60, 60))
+
+                label.setAlignment(Qt.AlignCenter)
+                self.board.setCellWidget(vert, hori, label)
 
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
-    window = MyWin()
+    window = Vchess()
     sys.exit(app.exec())

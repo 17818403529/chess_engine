@@ -306,71 +306,72 @@ def conv_fen(fen):
     return board
 
 
-def show_legal_moves(board):
-    legal_moves = []
+def show_fea_moves(board):
+    fea_moves = []
     oppo_side = "w" if board["turn"] == "b" else "b"
     for sqr in board[board["turn"]]:
         symbol = board["pieces"][sqr]
         _symbol = symbol.upper()
         if symbol in "Pp":
-            fea_moves = fea[symbol][sqr]
+            _fea_moves = fea[symbol][sqr]
         else:
-            fea_moves = fea[symbol.upper()][sqr]
+            print(board[board["turn"]])
+            _fea_moves = fea[symbol.upper()][sqr]
 
         if symbol in "RBQrbq":
             # Rock, Biship, Queen
-            for direc in fea_moves:
+            for direc in _fea_moves:
                 for i in direc:
                     if i in board["blank"]:
-                        legal_moves.append(_symbol + sqr + i)
+                        fea_moves.append(_symbol + sqr + i)
                     elif i in board[oppo_side]:
-                        legal_moves.append(_symbol + sqr + "x" + i)
+                        fea_moves.append(_symbol + sqr + "x" + i)
                         break
                     else:
                         break
 
         elif symbol in "Kk":
             # King
-            for i in fea_moves:
+            for i in _fea_moves:
                 if i in board["blank"]:
-                    legal_moves.append(_symbol + sqr + i)
+                    fea_moves.append(_symbol + sqr + i)
                 elif i in board[oppo_side]:
-                    legal_moves.append(_symbol + sqr + "x" + i)
+                    fea_moves.append(_symbol + sqr + "x" + i)
 
         elif symbol in "Nn":
             # Knight
-            for i in fea_moves:
+            for i in _fea_moves:
                 if i in board["blank"]:
-                    legal_moves.append(_symbol + sqr + i)
+                    fea_moves.append(_symbol + sqr + i)
                 elif i in board[oppo_side]:
-                    legal_moves.append(_symbol + sqr + "x" + i)
+                    fea_moves.append(_symbol + sqr + "x" + i)
 
         else:
             # pawns
-            for i in fea_moves[0]:
+            for i in _fea_moves[0]:
                 if i in board["blank"]:
                     if i[1] in "18":
                         # pawn promotion
                         for asc in "RNBQ":
-                            legal_moves.append(_symbol + sqr + i + "=" + asc)
+                            fea_moves.append(_symbol + sqr + i + "=" + asc)
                     else:
-                        legal_moves.append(_symbol + sqr + i)
+                        fea_moves.append(_symbol + sqr + i)
                 else:
                     break
 
-            for i in fea_moves[1]:
+            for i in _fea_moves[1]:
                 if i in board[oppo_side]:
                     if i[1] in "18":
                         # pawn promotion
                         for asc in "RNBQ":
-                            legal_moves.append(_symbol + sqr + "x" + i + "=" + asc)
+                            fea_moves.append(_symbol + sqr + "x" + i + "=" + asc)
                     else:
-                        legal_moves.append(_symbol + sqr + "x" + i)
+                        fea_moves.append(_symbol + sqr + "x" + i)
                 elif i == board["passer"]:
-                    legal_moves.append(_symbol + sqr + "x" + i)
+                    fea_moves.append(_symbol + sqr + "x" + i)
 
-    legal_moves += can_castle(board, oppo_side)
-    return legal_moves
+    fea_moves += can_castle(board, oppo_side)
+    return fea_moves
 
 
 def check(board):
@@ -514,6 +515,7 @@ def take_a_move(board, move):
         del board["pieces"][sqr]
 
         if "=" in move:
+            # pawn promotion
             board["pieces"][target] = move[-1]
         else:
             if board["turn"] == "w":
@@ -572,7 +574,7 @@ def take_a_move(board, move):
     return board
 
 
-def format_moves(board, legal_moves):
+def format_moves(board, fea_moves):
     formatted = {}
     repe = {}
 
@@ -586,7 +588,7 @@ def format_moves(board, legal_moves):
         for vert in "12345678":
             repe[hori + vert] = []
 
-    for move in legal_moves:
+    for move in fea_moves:
         if move in ["O-O-O", "O-O"]:
             formatted[move] = move
         elif move[0] == "P":
@@ -599,7 +601,10 @@ def format_moves(board, legal_moves):
 
         else:
             if move[0] in test:
-                repe[move[-2:]].append(move)
+                if "+" in move:
+                    repe[move[-3:-1]].append(move)
+                else:
+                    repe[move[-2:]].append(move)
             else:
                 formatted[move] = move[0] + move[3:]
 
@@ -630,54 +635,61 @@ def format_moves(board, legal_moves):
     return formatted
 
 
-def gen_nodes(board):
-    layer = {}
-    legal_moves = show_legal_moves(board)
-    formatted = format_moves(board, legal_moves)
+def show_legal_moves(fen):
+    board = conv_fen(fen)
+    fea_moves = show_fea_moves(board)
+    legal_moves = []
 
-    for move in legal_moves:
+    for move in fea_moves:
         _board = take_a_move(board, move)
         is_checked = check(_board)
         oppo_side = "b" if board["turn"] == "w" else "w"
         if is_checked[board["turn"]]:
             continue
         elif is_checked[oppo_side]:
-            layer[formatted[move] + "+"] = _board
+            legal_moves.append(move + "+")
         else:
-            layer[formatted[move]] = _board
+            legal_moves.append(move)
 
-    return layer
+    abbr = format_moves(board, legal_moves)
+    return abbr
 
 
-def gui(fen, frame=1):
-    board = conv_fen(fen)
-
-    while True:
-        nodes = gen_nodes(board)
-        legal_moves = list(nodes.keys())
-        if legal_moves == []:
-            print("#")
-            break
-        else:
-            move = choice(legal_moves)
-        board = nodes[move]
-        sleep(frame)
-        os.system("cls")
-        print(move)
-        for j in "87654321":
-            for i in "abcdefgh":
-                pos = i + j
-                if pos in board["blank"]:
-                    print("-", end="")
+def gen_fen(board):
+    fen = ""
+    for hori in "87654321":
+        empty = 0
+        for vert in "abcdefgh":
+            sqr = vert + hori
+            if sqr in board["blank"]:
+                empty += 1
+            else:
+                if empty:
+                    fen += str(empty)
+                    empty = 0
+                if sqr in board["b"]:
+                    fen += board["pieces"][sqr].lower()
                 else:
-                    if pos in board["b"]:
-                        print(board["pieces"][pos].lower(), end="")
-                    else:
-                        print(board["pieces"][pos], end="")
-                if i == "h":
-                    print(" ")
-        print(board["pieces"])
+                    fen += board["pieces"][sqr]
+            if vert == "h":
+                if empty:
+                    fen += str(empty)
+                fen += "/"
+                empty = 0
+    fen = fen[0:-1]
+    fen += " {} {} {} {} {}".format(
+        board["turn"], "".join(board["castle"]), board["passer"], 0, 1
+    )
+
+    return fen
 
 
-fen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
-# gui(fen)
+def engine(fen):
+    sleep(0.25)
+    abbr = show_legal_moves(fen)
+    move = choice(list(abbr.values()))
+    return move
+
+# fen =  "rn3bnr/pp1ppk1p/2b2p2/6pP/1Pp1P3/3P1QP1/P1P4P/RNB1KBNR w KQ g6 0 1"
+# while True:
+#     print(engine(fen))
