@@ -1,13 +1,15 @@
 import sys
 import os
 import json
+from vfunc import *
+import time
 
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui import *
 from PyQt5.QtCore import *
 from PyQt5 import *
 
-from models import *
+from chess_engine.lib import *
 
 pieces_path = os.getcwd() + "\\pieces\\"
 fen = """
@@ -41,19 +43,35 @@ class Chess(QThread):
             self.signal.emit(json.dumps(board))
 
 
-class Vchess(QWidget):
+class VBoard(QWidget):
 
     signal = pyqtSignal(str)
 
     def __init__(self):
         super().__init__()
-        self.title = "VChess"
+        self.title = "VBoard"
         self.board_style = {
             "light": QColor(206, 206, 206),
             "bold": QColor(242, 242, 242),
         }
+        self.square_size = 81
+        self.piece_size = 58
+        self.piece_style = "sketching"
+        self.piece_image_dir = os.getcwd() + "\\pieces\\{}\\".format(self.piece_style)
+
+        self.load_piece_imgs()
         self.signal.connect(self.refresh_board)
         self.init_window()
+
+    def load_piece_imgs(self):
+        self.piece_imgs = {}
+        for symbol in "rnbqkp":
+            img_path = self.piece_image_dir + "b{}.png".format(symbol)
+            self.piece_imgs[symbol] = QPixmap(img_path)
+
+        for symbol in "RNBQKP":
+            img_path = self.piece_image_dir + "w{}.png".format(symbol)
+            self.piece_imgs[symbol] = QPixmap(img_path)
 
     def init_window(self):
         self.setWindowTitle(self.title)
@@ -82,8 +100,8 @@ class Vchess(QWidget):
 
         for i in range(8):
             # set the square size
-            self.board.setRowHeight(i, 81)
-            self.board.setColumnWidth(i, 81)
+            self.board.setRowHeight(i, self.square_size)
+            self.board.setColumnWidth(i, self.square_size)
 
             # draw the header
             cell_text = QTableWidgetItem("abcdefgh"[i])
@@ -91,8 +109,7 @@ class Vchess(QWidget):
             cell_text = QTableWidgetItem("87654321"[i])
             self.board.setVerticalHeaderItem(i, cell_text)
 
-        # fill different colors for different grids
-
+        # fill different colors for different squares
         for vert in range(8):
             for hori in range(8):
                 self.board.setItem(hori, vert, QTableWidgetItem())
@@ -116,8 +133,10 @@ class Vchess(QWidget):
                     symbol = board["pieces"][sqr]
                     side = "w" if symbol in "RNBQKP" else "b"
                     symbol = symbol.lower() if side == "b" else symbol
-                    img_path = pieces_path + "{}.png".format(side + symbol)
-                    label.setPixmap(QPixmap(img_path).scaled(60, 60))
+                    # load the chess image file
+
+                    img_path = self.piece_image_dir + "{}.png".format(side + symbol)
+                    label.setPixmap(self.piece_imgs[symbol].scaled(self.piece_size, self.piece_size))
 
                 label.setAlignment(Qt.AlignCenter)
                 self.board.setCellWidget(vert, hori, label)
@@ -125,5 +144,5 @@ class Vchess(QWidget):
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
-    window = Vchess()
+    window = VBoard()
     sys.exit(app.exec())
