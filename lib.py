@@ -43,7 +43,7 @@ def knight(square):
         (hori - 1, vert - 2),
     ]:
         if i[0] in range(0, 8) and i[1] in range(0, 8):
-            target.append("abcdefgh"[i[1]] + "12345678"[i[0]])
+            target.append("abcdefgh"[i[0]] + "12345678"[i[1]])
     return target
 
 
@@ -112,8 +112,7 @@ def w_pawn(square):
     straight = []
     capture = []
 
-    des = chess_arith(square, (0, 1), 1)
-    straight.append(des)
+    straight.append(chess_arith(square, (0, 1), 1))
 
     if square[1] == "2":
         straight.append(chess_arith(square, (0, 1), 2))
@@ -145,13 +144,14 @@ def gen_chess_dict():
         target_dict["B"][i] = biship(i)
         target_dict["Q"][i] = queen(i)
         target_dict["K"][i] = king(i)
-        target_dict["P"][i] = w_pawn(i)
         target_dict["r"][i] = rook(i)
         target_dict["n"][i] = knight(i)
         target_dict["b"][i] = biship(i)
         target_dict["q"][i] = queen(i)
         target_dict["k"][i] = king(i)
-        target_dict["p"][i] = b_pawn(i)
+        if i[1] not in "18":
+            target_dict["P"][i] = w_pawn(i)
+            target_dict["p"][i] = b_pawn(i)
 
     blank = {}
     for i in squares:
@@ -165,6 +165,13 @@ def gen_chess_dict():
         "Q": [["e1", "d1", "c1"], ["b1", "d1", "c1"]],
         "k": [["e8", "f8", "g8"], ["f8", "g8"]],
         "q": [["e8", "d8", "c8"], ["b8", "d8", "c8"]],
+    }
+
+    castle_move = {
+        "K": {"O-O": ["e1", "g1"], "O-O-O": ["e1", "c1"]},
+        "k": {"O-O": ["e8", "g8"], "O-O-O": ["e8", "c8"]},
+        "R": {"O-O": ["h1", "f1"], "O-O-O": ["a1", "d1"]},
+        "r": {"O-O": ["h8", "f8"], "O-O-O": ["a8", "d8"]},
     }
 
     passers = [
@@ -204,13 +211,33 @@ def gen_chess_dict():
         "g6": ["f5", "h5"],
         "h6": ["g5"],
     }
+    passer_pawn = {
+        "a3": "a4",
+        "b3": "b4",
+        "c3": "c4",
+        "d3": "d4",
+        "e3": "e4",
+        "f3": "f4",
+        "g3": "g4",
+        "h3": "h4",
+        "a6": "a5",
+        "b6": "b5",
+        "c6": "c5",
+        "d6": "d5",
+        "e6": "e5",
+        "f6": "f5",
+        "g6": "g5",
+        "h6": "h5",
+    }
 
     return {
         "target_dict": target_dict,
         "blank": blank,
         "castle": castle,
+        "castle_move": castle_move,
         "passers": passers,
         "passer_nbr": passer_nbr,
+        "passer_pawn": passer_pawn,
     }
 
 
@@ -258,13 +285,20 @@ def convert(fen, chess_dict):
 
         elif i in "12345678":
             # alter "blank squares" in board
+            if hori == 8:
+                return False
             square = "abcdefgh"[hori] + "12345678"[vert - 1]
-            board["blank"] += chess_dict["blank"][square][str(int(i))]
             hori = hori + int(i)
+            if hori > 8:
+                return False
+            board["blank"] += chess_dict["blank"][square][str(int(i))]
+            
 
         elif i in "rbnqkpRBNQKP":
             # alter the packed when meets with a piece
             hori += 1
+            if hori > 8:
+                return False
             packed[8 - vert][hori - 1] = i
             if i in "kK":
                 kings[i] += 1
@@ -329,399 +363,359 @@ def convert(fen, chess_dict):
             # passer must has at least one opposite pawn neighbor
             flag = False
             pawn = "p" if board["turn"] == "w" else "P"
+            oppo_side = "w" if board["turn"] == "w" else "b"
             for square in chess_dict["passer_nbr"]:
-                if board["pieces"][square] == pawn:
-                    flag = True
-                    break
+                if square in board[oppo_side]:
+                    if board["pieces"][square] == pawn:
+                        flag = True
+                        break
             if not flag:
                 return False
 
     return board
 
 
-fen = """
-rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1
-"""
-chess_dict = gen_chess_dict()
-board = convert(fen, chess_dict)
-print(board)
+def is_reachable(board, target, side, chess_dict):
+    if target in board[side]:
+        return False
 
-# def show_fea_moves(board):
-#     fea_moves = []
-#     oppo_side = "w" if board["turn"] == "b" else "b"
-#     for sqr in board[board["turn"]]:
-#         symbol = board["pieces"][sqr]
-#         _symbol = symbol.upper()
-#         if symbol in "Pp":
-#             _fea_moves = fea[symbol][sqr]
-#         else:
-#             # print(board[board["turn"]])
-#             _fea_moves = fea[symbol.upper()][sqr]
+    for square in board[side]:
+        symbol = board["pieces"][square]
+        _targets = chess_dict["target_dict"][symbol][square]
 
-#         if symbol in "RBQrbq":
-#             # Rock, Biship, Queen
-#             for direc in _fea_moves:
-#                 for i in direc:
-#                     if i in board["blank"]:
-#                         fea_moves.append(_symbol + sqr + i)
-#                     elif i in board[oppo_side]:
-#                         fea_moves.append(_symbol + sqr + "x" + i)
-#                         break
-#                     else:
-#                         break
+        if symbol in "RBQrbq":
+            for direc in _targets:
+                for i in direc:
+                    if i == target:
+                        return True
+                    elif i not in board["blank"]:
+                        break
 
-#         elif symbol in "Kk":
-#             # King
-#             for i in _fea_moves:
-#                 if i in board["blank"]:
-#                     fea_moves.append(_symbol + sqr + i)
-#                 elif i in board[oppo_side]:
-#                     fea_moves.append(_symbol + sqr + "x" + i)
+        elif symbol in "KNkn":
+            for i in _targets:
+                if i == target:
+                    return True
 
-#         elif symbol in "Nn":
-#             # Knight
-#             for i in _fea_moves:
-#                 if i in board["blank"]:
-#                     fea_moves.append(_symbol + sqr + i)
-#                 elif i in board[oppo_side]:
-#                     fea_moves.append(_symbol + sqr + "x" + i)
-
-#         else:
-#             # pawns
-#             for i in _fea_moves[0]:
-#                 if i in board["blank"]:
-#                     if i[1] in "18":
-#                         # pawn promotion
-#                         for asc in "RNBQ":
-#                             fea_moves.append(_symbol + sqr + i + "=" + asc)
-#                     else:
-#                         fea_moves.append(_symbol + sqr + i)
-#                 else:
-#                     break
-
-#             for i in _fea_moves[1]:
-#                 if i in board[oppo_side]:
-#                     if i[1] in "18":
-#                         # pawn promotion
-#                         for asc in "RNBQ":
-#                             fea_moves.append(_symbol + sqr + "x" + i + "=" + asc)
-#                     else:
-#                         fea_moves.append(_symbol + sqr + "x" + i)
-#                 elif i == board["passer"]:
-#                     fea_moves.append(_symbol + sqr + "x" + i)
-
-#     fea_moves += can_castle(board, oppo_side)
-#     return fea_moves
+        else:
+            for i in _targets[1]:
+                if i == target:
+                    return True
+    return False
 
 
-# def check(board):
-#     is_checked = {"w": False, "b": False}
-#     is_checked["w"] = is_reachable(board, board["K"], "b")
-#     is_checked["b"] = is_reachable(board, board["k"], "w")
-#     return is_checked
+def is_checked(board):
+    result = {"w": False, "b": False}
+    result["w"] = is_reachable(board, board["K"], "b")
+    result["b"] = is_reachable(board, board["k"], "w")
+    return result
 
 
-# def is_reachable(board, target, side):
-#     if target in board[side]:
-#         return False
+def gather_unchecked_moves(board, chess_dict):
+    unchecked = []
+    oppo_side = "w" if board["turn"] == "b" else "b"
 
-#     for sqr in board[side]:
-#         symbol = board["pieces"][sqr]
+    for square in board[board["turn"]]:
+        symbol = board["pieces"][square]
+        targets = chess_dict["target_dict"][symbol][square]
+        symbol = symbol.upper()
 
-#         if symbol in "Pp":
-#             fea_moves = fea[symbol][sqr]
-#         else:
-#             fea_moves = fea[symbol.upper()][sqr]
+        if symbol in "RBQ":
+            # Rock, Biship, Queen
+            for direc in targets:
+                for i in direc:
+                    if i in board["blank"]:
+                        unchecked.append(symbol + square + i)
+                    elif i in board[oppo_side]:
+                        unchecked.append(symbol + square + "x" + i)
+                        break
+                    else:
+                        break
 
-#         if symbol in "RBQrbq":
-#             for direc in fea_moves:
-#                 for i in direc:
-#                     if i == target:
-#                         return True
-#                     elif i not in board["blank"]:
-#                         break
+        elif symbol == "K":
+            # King
+            for i in targets:
+                if i in board["blank"]:
+                    unchecked.append("K" + square + i)
+                elif i in board[oppo_side]:
+                    unchecked.append("K" + square + "x" + i)
 
-#         elif symbol in "KNkn":
-#             for i in fea_moves:
-#                 if i == target:
-#                     return True
+        elif symbol == "N":
+            # Knight
+            for i in targets:
+                if i in board["blank"]:
+                    unchecked.append("N" + square + i)
+                elif i in board[oppo_side]:
+                    unchecked.append("N" + square + "x" + i)
 
-#         else:
-#             for i in fea_moves[1]:
-#                 if i == target:
-#                     return True
-#     return False
+        else:
+            # pawns
+            for i in targets[0]:
+                if i in board["blank"]:
+                    if i[1] in "18":
+                        # pawn promotion
+                        for asc in "RNBQ":
+                            unchecked.append("P" + square + i + "=" + asc)
+                    else:
+                        unchecked.append("P" + square + i)
+                else:
+                    break
 
+            for i in targets[1]:
+                if i in board[oppo_side]:
+                    if i[1] in "18":
+                        # pawn promotion
+                        for asc in "RNBQ":
+                            unchecked.append("P" + square + "x" + i + "=" + asc)
+                    else:
+                        unchecked.append("P" + square + "x" + i)
+                elif i == board["passer"]:
+                    unchecked.append("P" + square + "x" + i)
 
-# def can_castle(board, oppo_side):
-#     own_side = "b" if oppo_side == "w" else "w"
-#     symbol = "KQ" if oppo_side == "b" else "kq"
-#     infea = ""
+    # castling
+    symbols = "KQ" if oppo_side == "b" else "kq"
+    infeasible = ""
 
-#     for i in symbol:
-#         if i not in board["castle"]:
-#             infea += i
-#             continue
+    for i in symbols:
+        if i not in board["castle"]:
+            infeasible += i
+            continue
 
-#         for sqr in fea["castle"][i][0]:
-#             if is_reachable(board, sqr, oppo_side):
-#                 infea += i
-#                 break
+        for square in chess_dict["castle"][i][0]:
+            if is_reachable(board, square, oppo_side):
+                infeasible += i
+                break
 
-#         for sqr in fea["castle"][i][1]:
-#             if sqr not in board["blank"]:
-#                 infea += i
-#                 break
+        for square in chess_dict["castle"][i][1]:
+            if square not in board["blank"]:
+                infeasible += i
+                break
 
-#     result = []
-#     if symbol[0] not in infea:
-#         result.append("O-O")
-#     if symbol[1] not in infea:
-#         result.append("O-O-O")
+    result = []
+    if symbols[0] not in infeasible:
+        result.append("O-O")
+    if symbols[1] not in infeasible:
+        result.append("O-O-O")
 
-#     return result
-
-
-# def take_a_move(board, move):
-#     board = deepcopy(board)
-#     oppo_side = "w" if board["turn"] == "b" else "b"
-
-#     if move in ["O-O", "O-O-O"]:
-#         # castling kings
-#         if board["turn"] == "w":
-#             symbol = "K"
-#             if move == "O-O":
-#                 sqr, target = "e1", "g1"
-#             else:
-#                 sqr, target = "e1", "c1"
-
-#             for i in "KQ":
-#                 if i in board["castle"]:
-#                     board["castle"].remove(i)
-#         else:
-#             symbol = "k"
-#             if move == "O-O":
-#                 sqr, target = "e8", "g8"
-#             else:
-#                 sqr, target = "e8", "c8"
-
-#             for i in "kq":
-#                 if i in board["castle"]:
-#                     board["castle"].remove(i)
-#         board[symbol] = target
-
-#         board["blank"].append(sqr)
-#         board["blank"].remove(target)
-#         board[board["turn"]].append(target)
-#         # print(move)
-#         board[board["turn"]].remove(sqr)
-#         del board["pieces"][sqr]
-#         board["pieces"][target] = symbol
-
-#         # castling rocks
-#         if board["turn"] == "w":
-#             symbol = "R"
-#             if move == "O-O":
-#                 sqr, target = "h1", "f1"
-#             else:
-#                 sqr, target = "a1", "d1"
-#         else:
-#             symbol = "r"
-#             if move == "O-O":
-#                 sqr, target = "h8", "f8"
-#             else:
-#                 sqr, target = "a8", "d8"
-
-#         board["blank"].append(sqr)
-#         board["blank"].remove(target)
-#         board[board["turn"]].append(target)
-#         board[board["turn"]].remove(sqr)
-#         del board["pieces"][sqr]
-#         board["pieces"][target] = symbol
-
-#     else:
-#         # normal moves and eat passers
-#         if "x" in move:
-#             symbol, sqr, target = move[0], move[1:3], move[4:6]
-#         else:
-#             symbol, sqr, target = move[0], move[1:3], move[3:5]
-#             board["blank"].remove(target)
-
-#         board[board["turn"]].remove(sqr)
-#         board[board["turn"]].append(target)
-
-#         board["blank"].append(sqr)
-
-#         del board["pieces"][sqr]
-
-#         if "=" in move:
-#             # pawn promotion
-#             board["pieces"][target] = move[-1]
-#         else:
-#             if board["turn"] == "w":
-#                 board["pieces"][target] = symbol
-#             else:
-#                 board["pieces"][target] = symbol.lower()
-
-#         if symbol in "Pp" and target == board["passer"]:
-#             # eat passers-by
-#             if board["turn"] == "w":
-#                 passer = target[0] + "5"
-#             else:
-#                 passer = target[0] + "4"
-#             del board["pieces"][passer]
-#             board[oppo_side].remove(passer)
-
-#         elif "x" in move:
-#             board[oppo_side].remove(target)
-
-#         if symbol == "K":
-#             # castling is not possible after the king has moved
-#             if board["turn"] == "w":
-#                 board["K"] = target
-#             else:
-#                 board["k"] = target
-
-#             if board["turn"] == "w":
-#                 for i in "KQ":
-#                     if i in board["castle"]:
-#                         board["castle"].remove(i)
-#             else:
-#                 for i in "kq":
-#                     if i in board["castle"]:
-#                         board["castle"].remove(i)
-
-#         elif symbol in "Rr":
-#             # castling is segmentally not possible after the rock has moved
-#             if symbol == "R" and sqr == "a1" and "Q" in board["castle"]:
-#                 board["castle"].remove("Q")
-#             elif symbol == "R" and sqr == "h1" and "K" in board["castle"]:
-#                 board["castle"].remove("K")
-#             elif symbol == "r" and sqr == "a8" and "q" in board["castle"]:
-#                 board["castle"].remove("q")
-#             elif symbol == "r" and sqr == "h8" and "k" in board["castle"]:
-#                 board["castle"].remove("k")
-
-#     board["passer"] = "-"
-
-#     if move[0] == "P" and move[2] == "2" and move[4] == "4":
-#         board["passer"] = move[1] + "3"
-
-#     if move[0] == "p" and move[2] == "7" and move[4] == "5":
-#         board["passer"] = move[1] + "6"
-
-#     board["turn"] = "b" if board["turn"] == "w" else "w"
-#     return board
+    return unchecked
 
 
-# def format_moves(board, fea_moves):
-#     formatted = {}
-#     repe = {}
+def take_a_move(board, move, chess_dict):
+    board = deepcopy(board)
+    oppo_side = "w" if board["turn"] == "b" else "b"
 
-#     test = list(board["pieces"].values())
-#     index = "RNBQK" if board["turn"] == "w" else "rnbqk"
-#     for i in index:
-#         if i in test:
-#             test.remove(i)
+    if move in ["O-O", "O-O-O"]:
+        # castling kings
+        if board["turn"] == "w":
+            square, target = chess_dict["castle_move"]["K"][move]
+            board["K"] = target
 
-#     for hori in "abcdefgh":
-#         for vert in "12345678":
-#             repe[hori + vert] = []
+            for i in "KQ":
+                if i in board["castle"]:
+                    board["castle"].remove(i)
+        else:
+            square, target = chess_dict["castle_move"]["K"][move]
+            board["k"] = target
 
-#     for move in fea_moves:
-#         if move in ["O-O-O", "O-O"]:
-#             formatted[move] = move
-#         elif move[0] == "P":
-#             if move[3] != "x":
-#                 formatted[move] = move[3:]
-#             else:
-#                 formatted[move] = move[1] + "x" + move[4:]
-#         elif move[0] == "K":
-#             formatted[move] = "K" + move[3:]
+            for i in "kq":
+                if i in board["castle"]:
+                    board["castle"].remove(i)
 
-#         else:
-#             if move[0] in test:
-#                 if "+" in move:
-#                     repe[move[-3:-1]].append(move)
-#                 else:
-#                     repe[move[-2:]].append(move)
-#             else:
-#                 formatted[move] = move[0] + move[3:]
+        board["blank"].append(square)
+        board["blank"].remove(target)
+        board[board["turn"]].append(target)
+        board[board["turn"]].remove(square)
+        del board["pieces"][square]
+        board["pieces"][target] = symbol
 
-#     for sqr in repe.keys():
-#         length = len(repe[sqr])
+        # castling rocks
+        if board["turn"] == "w":
+            symbol = "R"
+        else:
+            symbol = "r"
 
-#         if length == 1:
-#             move = repe[sqr][0]
-#             formatted[move] = move[0] + move[3:]
+        square, target = chess_dict["castle_move"][symbol][move]
 
-#         elif length > 1:
-#             for i in repe[sqr]:
-#                 flag = ""
+        board["blank"].append(square)
+        board["blank"].remove(target)
+        board[board["turn"]].append(target)
+        board[board["turn"]].remove(square)
+        del board["pieces"][square]
+        board["pieces"][target] = symbol
 
-#                 for j in repe[sqr]:
-#                     if i != j and i[0] == j[0]:
-#                         flag += "0"
-#                         if i[1] == j[1]:
-#                             flag += "1"
+    else:
+        # normal moves and eat passers
+        if "x" in move:
+            symbol, square, target = move[0], move[1:3], move[4:6]
+        else:
+            symbol, square, target = move[0], move[1:3], move[3:5]
+            board["blank"].remove(target)
 
-#                 if "0" in flag:
-#                     if "1" in flag:
-#                         formatted[i] = i
-#                     else:
-#                         formatted[i] = i[0:2] + i[3:]
-#                 else:
-#                     formatted[i] = i[0] + i[3:]
-#     return formatted
+        board[board["turn"]].remove(square)
+        board[board["turn"]].append(target)
+        board["blank"].append(square)
+        del board["pieces"][square]
+
+        # alter target square in board
+        if "=" in move:
+            # pawn promotion
+            if board["turn"] == "w":
+                board["pieces"][target] = move[-1]
+            else:
+                board["pieces"][target] = move[-1].lower()
+        else:
+            board["pieces"][target] = symbol
+
+        if symbol in "Pp" and target == board["passer"]:
+            # eat passers-by
+            _target = chess_dict["passer_pawn"][target]
+            del board["pieces"][_target]
+            board[oppo_side].remove(_target)
+
+        elif "x" in move:
+            board[oppo_side].remove(target)
+
+        if symbol == "K":
+            # king position should be refreashed
+            # castling is not possible after the king has moved
+            if board["turn"] == "w":
+                board["K"] = target
+                for i in "KQ":
+                    if i in board["castle"]:
+                        board["castle"].remove(i)
+            else:
+                board["k"] = target
+                for i in "kq":
+                    if i in board["castle"]:
+                        board["castle"].remove(i)
+
+        elif symbol in "Rr":
+            # castling is segmentally not possible after the rock has moved
+            if symbol == "R" and square == "a1" and "Q" in board["castle"]:
+                board["castle"].remove("Q")
+            elif symbol == "R" and square == "h1" and "K" in board["castle"]:
+                board["castle"].remove("K")
+            elif symbol == "r" and square == "a8" and "q" in board["castle"]:
+                board["castle"].remove("q")
+            elif symbol == "r" and square == "h8" and "k" in board["castle"]:
+                board["castle"].remove("k")
+
+    board["passer"] = "-"
+
+    if move[0] == "P" and move[2] == "2" and move[4] == "4":
+        board["passer"] = move[1] + "3"
+
+    if move[0] == "p" and move[2] == "7" and move[4] == "5":
+        board["passer"] = move[1] + "6"
+
+    board["turn"] = "b" if board["turn"] == "w" else "w"
+    return board
 
 
-# def show_legal_moves(fen):
-#     board = conv_fen(fen)
-#     fea_moves = show_fea_moves(board)
-#     legal_moves = []
+def format_moves(board, unchecked):
+    formatted = {}
+    repe = {}
 
-#     for move in fea_moves:
-#         _board = take_a_move(board, move)
-#         is_checked = check(_board)
-#         oppo_side = "b" if board["turn"] == "w" else "w"
-#         if is_checked[board["turn"]]:
-#             continue
-#         elif is_checked[oppo_side]:
-#             legal_moves.append(move + "+")
-#         else:
-#             legal_moves.append(move)
+    pieces = list(board["pieces"].values())
+    index = "RNBQK" if board["turn"] == "w" else "rnbqk"
+    for i in index:
+        if i in pieces:
+            pieces.remove(i)
 
-#     abbr = format_moves(board, legal_moves)
-#     return abbr
+    for hori in "abcdefgh":
+        for vert in "12345678":
+            repe[hori + vert] = []
+
+    for move in unchecked:
+        if move in ["O-O-O", "O-O"]:
+            formatted[move] = move
+        elif move[0] == "P":
+            if move[3] != "x":
+                formatted[move] = move[3:]
+            else:
+                formatted[move] = move[1] + "x" + move[4:]
+        elif move[0] == "K":
+            # there is only one king
+            formatted[move] = "K" + move[3:]
+
+        else:
+            if move[0] in pieces:
+                if "+" in move:
+                    repe[move[-3:-1]].append(move)
+                else:
+                    repe[move[-2:]].append(move)
+            else:
+                formatted[move] = move[0] + move[3:]
+
+    for square in repe.keys():
+        length = len(repe[square])
+
+        if length == 1:
+            move = repe[square][0]
+            formatted[move] = move[0] + move[3:]
+
+        elif length > 1:
+            for i in repe[square]:
+                flag = ""
+
+                for j in repe[square]:
+                    if i != j and i[0] == j[0]:
+                        flag += "0"
+                        if i[1] == j[1]:
+                            flag += "1"
+
+                if "0" in flag:
+                    if "1" in flag:
+                        formatted[i] = i
+                    else:
+                        formatted[i] = i[0:2] + i[3:]
+                else:
+                    formatted[i] = i[0] + i[3:]
+    return formatted
 
 
-# def gen_fen(board):
-#     fen = ""
-#     for hori in "87654321":
-#         empty = 0
-#         for vert in "abcdefgh":
-#             sqr = vert + hori
-#             if sqr in board["blank"]:
-#                 empty += 1
-#             else:
-#                 if empty:
-#                     fen += str(empty)
-#                     empty = 0
-#                 if sqr in board["b"]:
-#                     fen += board["pieces"][sqr].lower()
-#                 else:
-#                     fen += board["pieces"][sqr]
-#             if vert == "h":
-#                 if empty:
-#                     fen += str(empty)
-#                 fen += "/"
-#                 empty = 0
-#     fen = fen[0:-1]
-#     fen += " {} {} {} {} {}".format(
-#         board["turn"], "".join(board["castle"]), board["passer"], 0, 1
-#     )
+def gather_legal_moves(fen, chess_dict):
+    board = convert(fen, chess_dict)
+    unchecked = gather_unchecked_moves(board, chess_dict)
+    legal_moves = []
 
-#     return fen
+    for move in unchecked:
+        _board = take_a_move(board, move)
+        _is_checked = is_checked(_board)
+        oppo_side = "b" if board["turn"] == "w" else "w"
+        if _is_checked[board["turn"]]:
+            continue
+        elif _is_checked[oppo_side]:
+            legal_moves.append(move + "+")
+        else:
+            legal_moves.append(move)
+
+    abbr = format_moves(board, legal_moves)
+    return abbr
+
+
+def gen_fen(board):
+    fen = ""
+    for vert in "87654321":
+        empty = 0
+        for hori in "abcdefgh":
+            square = hori + vert
+            if square in board["blank"]:
+                empty += 1
+            else:
+                if empty:
+                    fen += str(empty)
+                    empty = 0
+                fen += board["pieces"][square]
+            if hori == "h":
+                if empty:
+                    fen += str(empty)
+                fen += "/"
+                empty = 0
+    fen = fen[0:-1]
+    fen += " {} {} {} {} {}".format(
+        board["turn"], "".join(board["castle"]), board["passer"], 0, 1
+    )
+    return fen
 
 
 # def engine(fen):
@@ -731,6 +725,15 @@ print(board)
 #     return move
 
 
-# # fen =  "rn3bnr/pp1ppk1p/2b2p2/6pP/1Pp1P3/3P1QP1/P1P4P/RNB1KBNR w KQ g6 0 1"
+fen = "rn1q1bnr/pp1p1p1p/2bk4/Q1p2p1p/4P3/2P5/PP1P1PPP/RN2K1NR w KQ - 0 1"
+
+chess_dict = gen_chess_dict()
+board = convert(fen, chess_dict)
+_fen = gen_fen(board)
+# print(board)
+if _fen!=fen:
+    print(fen)
+    print(fen)
+
 # # while True:
 # #     print(engine(fen))

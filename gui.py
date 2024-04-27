@@ -27,7 +27,7 @@ class Chess(QThread):
     def run(self):
         fen = self.init_fen
         while True:
-            board = conv_fen(fen)
+            board = convert(fen)
             legal_moves = show_legal_moves(fen)
             move = engine(fen)
             if move in legal_moves.values():
