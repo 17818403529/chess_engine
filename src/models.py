@@ -254,21 +254,21 @@ class Chess:
 
     def convert(fen, chess_dict):
         fen = fen.split()
-        board = {
-            "blank": [],
-            "w": [],
-            "b": [],
-            "pieces": {},
-            "turn": fen[1],
-            "castle": [],
-            "passer": fen[3],
-            "K": "",
-            "k": "",
-        }
-
         # a legal fen must have 6 parts
         if len(fen) != 6:
             return False
+        else:
+            board = {
+                "blank": [],
+                "w": [],
+                "b": [],
+                "pieces": {},
+                "turn": fen[1],
+                "castle": [],
+                "passer": fen[3],
+                "K": "",
+                "k": "",
+            }
         print(1)
         # fen[0] is pieces, which is main part
         pieces = fen[0]
@@ -293,7 +293,7 @@ class Chess:
                 if vert < 1 or hori != 8:
                     return False
                 hori = 0
-        
+
             elif i in "12345678":
                 # alter "blank squares" in board
                 if hori == 8:
@@ -364,7 +364,7 @@ class Chess:
                 castling = "".join(board["castle"])
             else:
                 castling = "-"
-                
+
             for i in fen[2]:
                 if i not in castling:
                     return False
@@ -504,9 +504,9 @@ class Chess:
 
         result = []
         if symbols[0] not in infeasible:
-            result.append("O-O")
+            unchecked.append("O-O")
         if symbols[1] not in infeasible:
-            result.append("O-O-O")
+            unchecked.append("O-O-O")
 
         return unchecked
 
@@ -517,14 +517,16 @@ class Chess:
         if move in ["O-O", "O-O-O"]:
             # castling kings
             if board["turn"] == "w":
-                square, target = chess_dict["castle_move"]["K"][move]
-                board["K"] = target
+                symbol="K"
+                square, target = chess_dict["castle_move"][symbol][move]
+                board[symbol] = target
 
                 for i in "KQ":
                     if i in board["castle"]:
                         board["castle"].remove(i)
             else:
-                square, target = chess_dict["castle_move"]["K"][move]
+                symbol="k"
+                square, target = chess_dict["castle_move"][symbol][move]
                 board["k"] = target
 
                 for i in "kq":
@@ -573,9 +575,9 @@ class Chess:
             if "=" in move:
                 # pawn promotion
                 if board["turn"] == "w":
-                    board["pieces"][target] = move[-1]
+                    board["pieces"][target] = move[move.index("=") + 1]
                 else:
-                    board["pieces"][target] = move[-1].lower()
+                    board["pieces"][target] = move[move.index("=") + 1].lower()
             else:
                 board["pieces"][target] = symbol
 
@@ -590,9 +592,10 @@ class Chess:
 
             if symbol in "Kk":
                 # king position should be refreashed
+                board[symbol] = target
+
                 # castling is not possible after the king has moved
                 to_be_moved = "KQ" if symbol == "K" else "kq"
-                board["symbol"] = target
                 for i in to_be_moved:
                     if i in board["castle"]:
                         board["castle"].remove(i)
@@ -646,12 +649,12 @@ class Chess:
                 formatted[move] = move
             elif move[0] == "P":
                 if move[3] != "x":
-                    formatted[move] = move[3:]
+                    formatted[move[3:]] = move
                 else:
-                    formatted[move] = move[1] + "x" + move[4:]
+                    formatted[move[1] + "x" + move[4:]] = move
             elif move[0] == "K":
                 # there is only one king
-                formatted[move] = "K" + move[3:]
+                formatted["K" + move[3:]] = move
 
             else:
                 if move[0] in pieces:
@@ -660,14 +663,14 @@ class Chess:
                     else:
                         repe[move[-2:]].append(move)
                 else:
-                    formatted[move] = move[0] + move[3:]
+                    formatted[move[0] + move[3:]] = move
 
         for square in repe.keys():
             length = len(repe[square])
 
             if length == 1:
                 move = repe[square][0]
-                formatted[move] = move[0] + move[3:]
+                formatted[move[0] + move[3:]] = move
 
             elif length > 1:
                 for i in repe[square]:
@@ -683,9 +686,9 @@ class Chess:
                         if "1" in flag:
                             formatted[i] = i
                         else:
-                            formatted[i] = i[0:2] + i[3:]
+                            formatted[i[0:2] + i[3:]] = i
                     else:
-                        formatted[i] = i[0] + i[3:]
+                        formatted[i[0] + i[3:]] = i
         return formatted
 
     def gather_legal_moves(board, chess_dict):
@@ -703,8 +706,7 @@ class Chess:
             else:
                 legal_moves.append(move)
 
-        abbr = Chess.format_moves(board, legal_moves)
-        return abbr
+        return Chess.format_moves(board, legal_moves)
 
     def gen_fen(board):
         fen = ""
@@ -739,20 +741,21 @@ from time import sleep
 
 
 def engine(fen, chess_dict):
-    sleep(0.0001)
+    sleep(0.001)
     board = Chess.convert(fen, chess_dict)
-    abbr = Chess.gather_legal_moves(board, chess_dict)
-    move = choice(list(abbr.values()))
+    legal_moves = Chess.gather_legal_moves(board, chess_dict)
+    move = choice(list(legal_moves.keys()))
     return move
 
 
-fen = "r4b1r/1b2k3/p1p1pn1n/5pN1/QP2P1Pp/4P1RP/P2K4/RNB2B2 w - - 1 2"
+if __name__ == "__main__":
+    fen = "r4b1r/1b2k3/p1p1pn1n/5pN1/QP2P1Pp/4P1RP/P2K4/RNB2B2 w - - 1 2"
 
-chess_dict = Chess.gen_chess_dict()
-board = Chess.convert(fen, chess_dict)
-print(board)
-# legal_moves = gather_legal_moves(board, chess_dict)
-# print(legal_moves)
+    chess_dict = Chess.gen_chess_dict()
+    board = Chess.convert(fen, chess_dict)
+    print(board)
+    # legal_moves = gather_legal_moves(board, chess_dict)
+    # print(legal_moves)
 
-# from vfunc import *
-# vfunc(gen_fen,(board,))
+    # from vfunc import *
+    # vfunc(gen_fen,(board,))

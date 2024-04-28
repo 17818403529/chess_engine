@@ -1,6 +1,8 @@
 import sys
 import os
 import json
+from random import choice
+from time import sleep
 
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui import *
@@ -11,32 +13,46 @@ import pygame
 from models import *
 
 
+class Piece(QLabel):
+    def model(self, image, size):
+        self.setPixmap(image.scaled(size, size))
+    
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            drag = QDrag(self)
+            mimeData = QMimeData()
+            
+            pixmap = QPixmap(self.size())
+            self.render(pixmap)
+            drag.setPixmap(pixmap)
+
+            drag.setMimeData(mimeData)
+            drag.exec_(Qt.MoveAction)
+
+
 class Game(QThread):
     def __init__(self, signal):
         super().__init__()
         self.move_list = []
         self.signal = signal
         self.init_fen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
+        # self.init_fen = "r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1"
         self.chess_dict = Chess.gen_chess_dict()
 
     def run(self):
         fen = self.init_fen
+        board = Chess.convert(fen, self.chess_dict)
         while True:
-            board = Chess.convert(fen, self.chess_dict)
             legal_moves = Chess.gather_legal_moves(board, self.chess_dict)
-            move = engine(fen, self.chess_dict)
-            if move in legal_moves.values():
-                for key in legal_moves.keys():
-                    if legal_moves[key] == move:
-                        _move = key
-                        break
+            if len(list(legal_moves.keys())) == 0:
+                print("mate")
+            move = choice(list(legal_moves.keys()))
+            if move in legal_moves.keys():
+                board = Chess.take_a_move(board, legal_moves[move], self.chess_dict)
             else:
                 return False
-
-            board = Chess.take_a_move(board, _move, self.chess_dict)
-            fen = Chess.gen_fen(board)
-            print(_move, fen)
             self.signal.emit(json.dumps(board))
+            sleep(1)
 
 
 class VBoard(QMainWindow):
@@ -51,6 +67,7 @@ class VBoard(QMainWindow):
         self.load_pieces()
         self.load_sound()
 
+        self.setAcceptDrops(True)
         self.signal.connect(self.render_board)
         self.init_window()
 
@@ -179,17 +196,33 @@ class VBoard(QMainWindow):
 
         for hori in range(8):
             for vert in range(8):
-                label = QLabel("")
+                piece = Piece("")
                 square = "abcdefgh"[hori] + "87654321"[vert]
+                
                 if square not in board["blank"]:
                     # put piece at a square if it is not blank
                     symbol = board["pieces"][square]
-                    label.setPixmap(
-                        self.pieces[symbol].scaled(self.piece_size, self.piece_size)
-                    )
-                label.setAlignment(Qt.AlignCenter)
-                self.board.setCellWidget(vert, hori, label)
+                    try:
+                        piece.model(self.pieces[symbol],self.piece_size)
+                    except:
+                        print(symbol,board["pieces"])
+                
+                piece.setAlignment(Qt.AlignCenter)
+                self.board.setCellWidget(vert, hori, piece)
         # self.move_sound.play()
+    
+    def dragEnterEvent(self, event):
+        pos = event.pos()
+        event.accept()
+
+    def dropEvent(self, event):
+        pos = event.pos()
+        square = self.board.itemAt(pos)
+        hori, vert = square.row(), square.column()
+        print(hori, vert)
+        piece = event.source()
+        self.board.setCellWidget(hori, vert, piece)
+        event.accept()
 
 
 if __name__ == "__main__":
