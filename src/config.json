@@ -1,0 +1,60 @@
+{
+    "board_style": {
+        "light": [
+            206,
+            206,
+            206
+        ],
+        "bold": [
+            242,
+            242,
+            242
+        ]
+    },
+    "square_size": 81,
+    "current_piece_style": "sketching",
+    "pieces_dir": "C:\\Users\\17818\\Music\\vchess\\resource\\images\\pieces\\",
+    "sound_dir": "C:\\Users\\17818\\Music\\vchess\\resource\\sounds\\",
+    "piece_styles": {
+        "alpha": [
+            "svg",
+            78
+        ],
+        "cardinal": [
+            "svg",
+            78
+        ],
+        "fresca": [
+            "svg",
+            78
+        ],
+        "gioco": [
+            "svg",
+            78
+        ],
+        "icpieces": [
+            "svg",
+            78
+        ],
+        "leipzig": [
+            "svg",
+            78
+        ],
+        "letter": [
+            "svg",
+            78
+        ],
+        "maestro": [
+            "svg",
+            78
+        ],
+        "merida": [
+            "svg",
+            78
+        ],
+        "sketching": [
+            "png",
+            58
+        ]
+    }
+}
