@@ -259,17 +259,19 @@ class Chess:
             return False
         else:
             board = {
+                "pieces": {},
                 "blank": [],
                 "w": [],
                 "b": [],
-                "pieces": {},
                 "turn": fen[1],
                 "castle": [],
                 "passer": fen[3],
+                "half": int(fen[4]),
+                "full": int(fen[5]),
                 "K": "",
                 "k": "",
             }
-        print(1)
+
         # fen[0] is pieces, which is main part
         pieces = fen[0]
         packed = [
@@ -326,26 +328,26 @@ class Chess:
                     board["w"].append(square)
             else:
                 return False
-        print(2)
+
         if vert != 1:
             # pieces must have exactly 7 "/"
             return False
-        print(3)
+
         if not ((kings["K"] == 1) and (kings["k"] == 1)):
             # there are one and only one king of each side among pieces
             return False
-        print(4)
+
         for p in "Pp":
             # pawns can not in the "line 1" or the "line 8"
             if p in packed[0] or p in packed[7]:
                 return False
-        print(5)
+
         # fen[1] shows which side to move
         if fen[1] not in "wb":
             return False
         else:
             board["turn"] = fen[1]
-        print(6)
+
         # fen[2] shows information of castling
         if fen[2] != "-":
             if packed[7][4] == "K":
@@ -368,7 +370,7 @@ class Chess:
             for i in fen[2]:
                 if i not in castling:
                     return False
-        print(7)
+
         # fen[3] shows information of passer
         passer = fen[3]
         if passer != "-":
@@ -386,7 +388,7 @@ class Chess:
                             break
                 if not flag:
                     return False
-        print(8)
+
         return board
 
     def is_reachable(board, target, side, chess_dict):
@@ -517,7 +519,7 @@ class Chess:
         if move in ["O-O", "O-O-O"]:
             # castling kings
             if board["turn"] == "w":
-                symbol="K"
+                symbol = "K"
                 square, target = chess_dict["castle_move"][symbol][move]
                 board[symbol] = target
 
@@ -525,7 +527,7 @@ class Chess:
                     if i in board["castle"]:
                         board["castle"].remove(i)
             else:
-                symbol="k"
+                symbol = "k"
                 square, target = chess_dict["castle_move"][symbol][move]
                 board["k"] = target
 
@@ -627,7 +629,19 @@ class Chess:
                     if board["pieces"][square] == passer:
                         board["passer"] = passer
 
+        # alter turn
         board["turn"] = "b" if board["turn"] == "w" else "w"
+
+        # alter half
+        if move[0] in "Pp" or "x" in move:
+            board["half"] = "0"
+        else:
+            board["half"] = str(int(board["half"]) + 1)
+
+        # alter full
+        if board["turn"] == "w":
+            board["full"] = str(int(board["full"]) + 1)
+
         return board
 
     def format_moves(board, unchecked):
@@ -733,19 +747,50 @@ class Chess:
         else:
             castling = "-"
 
-        fen += " {} {} {} {} {}".format(board["turn"], castling, board["passer"], 0, 1)
+        fen += " {} {} {} {} {}".format(
+            board["turn"], castling, board["passer"], board["half"], board["full"]
+        )
         return fen
 
 
 from time import sleep
+from random import random
 
 
-def engine(fen, chess_dict):
-    sleep(0.001)
-    board = Chess.convert(fen, chess_dict)
+def engine(board, chess_dict):
     legal_moves = Chess.gather_legal_moves(board, chess_dict)
-    move = choice(list(legal_moves.keys()))
-    return move
+    capture = []
+    check = []
+    king = []
+    others = []
+    move = ""
+    for i in list(legal_moves.keys()):
+        if "x" in i:
+            capture.append(i)
+        elif "+" in i:
+            check.append(i)
+        elif "K" in i:
+            king.append(i)
+        else:
+            others.append(i)
+
+    if capture:
+        if random() > 0.3:
+            move = choice(capture)
+    elif check:
+        if random() > 0.2:
+            move = choice(check)
+    elif others:
+        if random() > 0.5:
+            move = choice(others)
+    elif king:
+        if random() > 0.9:
+            move = choice(king)
+    
+    if move:
+        return move
+    else:
+        return choice(list(legal_moves.keys()))
 
 
 if __name__ == "__main__":

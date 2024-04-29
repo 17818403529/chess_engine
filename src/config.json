@@ -1,18 +1,16 @@
 {
-    "board_style": {
-        "light": [
-            206,
-            206,
-            206
-        ],
+    "chessboard_style": {
         "bold": [
-            242,
-            242,
-            242
+            250,
+            235,
+            215
+        ],
+        "light": [
+            143,188,139
         ]
     },
     "square_size": 81,
-    "current_piece_style": "sketching",
+    "current_piece_style": "gioco",
     "pieces_dir": "C:\\Users\\17818\\Music\\vchess\\resource\\images\\pieces\\",
     "sound_dir": "C:\\Users\\17818\\Music\\vchess\\resource\\sounds\\",
     "piece_styles": {
