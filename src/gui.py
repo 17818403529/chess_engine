@@ -4,13 +4,17 @@ import json
 from random import choice
 from time import sleep
 
+import pygame
+from models import *
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui import *
 from PyQt5.QtCore import *
 from PyQt5 import *
-import pygame
 
-from models import *
+config_path = os.path.dirname(os.path.abspath(__file__)) + "\\config.json"
+with open(config_path, "r", encoding="utf-8") as f:
+    config = json.load(f)
+pygame.mixer.init()
 
 
 class Piece(QLabel):
@@ -38,7 +42,24 @@ class Game(QThread):
         self.chess_dict = Chess.gen_chess_dict()
         self.fen = fen
 
-    def is_game_ended(self, board):
+    def judge(self, move, board):
+
+        # move = engine(board, self.chess_dict)
+        # if move in legal_moves.keys():
+        #     board = Chess.take_a_move(board, legal_moves[move], self.chess_dict)
+        #     self.current_fen = Chess.gen_fen(board).split()[0]
+        #     self.pgn[move] = self.current_fen
+        # else:
+        #     return False
+
+        if "#" in move:
+            # checkmate
+            return True
+
+        legal_moves = Chess.gather_legal_moves(board, self.chess_dict)
+        if legal_moves == {}:
+            # stalemate
+            return True
 
         # 50 moves draw
         if board["half"] == "100":
@@ -67,126 +88,133 @@ class Game(QThread):
     def run(self):
         board = Chess.convert(self.fen, self.chess_dict)
         while True:
-            legal_moves = Chess.gather_legal_moves(board, self.chess_dict)
-            if len(list(legal_moves.keys())) == 0:
-                print("mate")
             move = engine(board, self.chess_dict)
-            if move in legal_moves.keys():
-                board = Chess.take_a_move(board, legal_moves[move], self.chess_dict)
-                self.current_fen = Chess.gen_fen(board).split()[0]
-                self.pgn[move] = self.current_fen
-            else:
-                return False
-            self.signal.emit(json.dumps({"board": board, "move": move}))
-            if self.is_game_ended(board):
+            result = self.judge(move, board)
+            self.signal.emit(json.dumps(result))
+            if result["status"]:
                 break
-            sleep(1)
+            board = result["board"]
 
 
-class VBord(QMainWindow):
+class Hera(QMainWindow):
 
-    signal = pyqtSignal(str)
+    # signals
+    game_signal = pyqtSignal(str)
+    white_signal = pyqtSignal(str)
+    black_signal = pyqtSignal(str)
 
     def __init__(self):
         super().__init__()
-
-        # basic setup
-        self.setAcceptDrops(True)
-        self.setWindowTitle("VBord")
+        # basic appearance setup
         self.centralWidget = QWidget()
-        self.setCentralWidget(self.centralWidget)
-        # self.setGeometry(480, 200, 1000, 720)
         self.layout = QGridLayout()
-        self.layout.setSpacing(10)
+        self.chessboard = QTableWidget(8, 8, self)
+        self.manual_area = QTableWidget(1, 3, self)
+        self.load_piece_image()
+        self.move_sound = pygame.mixer.Sound(self.sound_dir + "move.wav")
 
-        # system
-        self.is_silent = True
-        self.game_thread = None
-
-        # load resource files
-        self.load_config()
-        self.load_pieces()
-        self.load_sound()
-
-        # render all assembly units
-        self.render_menu()
-        self.render_chessboard()
-        self.render_manual_zone()
-        self.compose()
-
-        # connect signals
-        self.signal.connect(self.game)
-
-    def compose(self):
-        self.layout.addWidget(self.chessboard, 0, 0, 1, 1)
-        self.layout.addWidget(self.manual_zone, 0, 1, 1, 1)
-        self.centralWidget.setLayout(self.layout)
-
-    def render_manual_zone(self):
-        self.manual_zone = QTableWidget(1, 3, self)
-        self.manual_zone.setMaximumSize(240, 660)
-        self.manual_zone.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-
-        self.manual_zone.setFrameShape(QFrame.NoFrame)
-        self.manual_zone.setShowGrid(False)
-
-        # hide the header
-        self.manual_zone.horizontalHeader().setVisible(False)
-        self.manual_zone.verticalHeader().setVisible(False)
-
-        self.manual_zone.setColumnWidth(0, 45)
-        self.manual_zone.setColumnWidth(1, 60)
-        self.manual_zone.setColumnWidth(1, 60)
-
-    def load_config(self):
-        config_path = os.path.dirname(os.path.abspath(__file__)) + "\\config.json"
-        with open(config_path, "r", encoding="utf-8") as f:
-            config = json.load(f)
-
-        # chessboard square color
-        light, bold = (
-            config["chessboard_style"]["light"],
-            config["chessboard_style"]["bold"],
-        )
-        self.chessboard_style = {
-            "light": QColor(light[0], light[1], light[2]),
-            "bold": QColor(bold[0], bold[1], bold[2]),
-        }
-
-        # square size
+        # load config
+        self.piece_image_dir = config["piece_image_dir"]
+        self.sound_dir = config["sound_dir"]
+        self.chessboard_style = config["chessboard_style"]
         self.square_size = config["square_size"]
-
-        # piece style
+        self.piece_styles = config["piece_styles"]
         self.current_piece_style = config["current_piece_style"]
 
-        # resource file directory
-        self.pieces_dir = config["pieces_dir"]
-        self.sound_dir = config["sound_dir"]
+        # system variables
+        self.piece_image = {}
+        self.piece_size = None
+        self.is_silent = True
+        self.game_thread = None
+        self.game_signal.connect(self.update_game_status)
 
-        # pieces styles
-        self.piece_styles = config["piece_styles"]
+        # append components
+        self.compose()
+        self.append_menu()
+        self.append_chessboard()
+        self.append_manual_area()
 
-    def load_pieces(self):
+    def load_piece_image(self):
         # load the picture of each piece from disk
-        self.pieces = {}
         suffix = self.piece_styles[self.current_piece_style][0]
         self.piece_size = self.piece_styles[self.current_piece_style][1]
 
         for symbol in "rnbqkp":
-            img_path = self.pieces_dir + "{}\\b{}.{}".format(
+            img_path = self.piece_image_dir + "{}\\b{}.{}".format(
                 self.current_piece_style, symbol, suffix
             )
-            self.pieces[symbol] = QPixmap(img_path)
+            self.piece_image[symbol] = QPixmap(img_path)
 
         for symbol in "RNBQKP":
-            img_path = self.pieces_dir + "{}\\w{}.{}".format(
+            img_path = self.piece_image_dir + "{}\\w{}.{}".format(
                 self.current_piece_style, symbol, suffix
             )
-            self.pieces[symbol] = QPixmap(img_path)
+            self.piece_image[symbol] = QPixmap(img_path)
 
-    def load_sound(self):
-        pygame.mixer.init()
-        self.move_sound = pygame.mixer.Sound(self.sound_dir + "move.wav")
+    def compose(self):
+        self.setAcceptDrops(True)
+        self.setWindowTitle("VBord")
+        self.setCentralWidget(self.centralWidget)
+        self.setGeometry(480, 200, 1000, 720)
+        self.layout.setSpacing(10)
+        self.layout.addWidget(self.chessboard, 0, 0, 1, 1)
+        self.layout.addWidget(self.manual_area, 0, 1, 1, 1)
+        self.centralWidget.setLayout(self.layout)
+
+    def append_menu(self):
+        menuBar = self.menuBar()
+
+        # append "File" menu
+        fileMenu = menuBar.addMenu("Files")
+
+        openAct = QAction(QIcon(""), "Open...", self)
+        openAct.setShortcut("Ctrl+F")
+        openAct = QAction(QIcon(""), "Open...", self)
+        fileMenu.addAction(openAct)
+
+        # the "Game Menu"
+        gameMenu = menuBar.addMenu("Game")
+
+        newGameAct = QAction(QIcon(""), "new game", self)
+        gameMenu.addAction(newGameAct)
+        newGameAct.triggered.connect(self.new_game)
+
+        # append "Config" menu
+        configMenu = menuBar.addMenu("Configs")
+
+        # "piece style" submenu
+        pieceStyleMenu = configMenu.addMenu("Pieces Style")
+
+        for style in self.piece_styles.keys():
+            styleAct = QAction(QIcon(""), style, self)
+            styleAct.triggered.connect(
+                lambda: self.alter_current_piece_style(self.sender().text())
+            )
+            pieceStyleMenu.addAction(styleAct)
+
+        # "sound" submenu
+        soundMenu = configMenu.addMenu("Sound")
+
+        adjustVolumeAct = QAction(QIcon(""), "Adjust Volume", self)
+        soundMenu.addAction(adjustVolumeAct)
+
+        keepSilentAct = QAction(QIcon(""), "Keep Silent", self)
+        keepSilentAct.triggered.connect(self.keep_silent)
+        soundMenu.addAction(keepSilentAct)
+
+        # the "Help Menu"
+        helpMenu = menuBar.addMenu("Help")
+
+        helpAct = QAction(QIcon(""), "Help", self)
+        helpAct.setShortcut("Ctrl+H")
+        helpMenu.addAction(helpAct)
+
+        aboutAct = QAction(QIcon(""), "About", self)
+        helpMenu.addAction(aboutAct)
+
+    def alter_current_piece_style(self, style):
+        self.current_piece_style = style
+        self.load_piece_image()
 
     def new_game(self):
         if self.game_thread:
@@ -194,54 +222,9 @@ class VBord(QMainWindow):
             self.game_thread.wait()
 
         self.game_thread = Game(
-            self.signal, "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
+            self.game_signal, "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
         )
         self.game_thread.start()
-
-    def render_menu(self):
-        menuBar = self.menuBar()
-
-        fileMenu = menuBar.addMenu("Files")
-        gameMenu = menuBar.addMenu("Game")
-        configMenu = menuBar.addMenu("Configs")
-
-        # the "Game Menu"
-        newGameAct = QAction(QIcon(""), "new game", self)
-        gameMenu.addAction(newGameAct)
-        newGameAct.triggered.connect(self.new_game)
-
-        # the "Pieces Style Menu"
-        pieceStyleMenu = configMenu.addMenu("Pieces Style")
-        for style in self.piece_styles.keys():
-            styleAct = QAction(QIcon(""), style, self)
-            pieceStyleMenu.addAction(styleAct)
-            styleAct.triggered.connect(
-                lambda: self.alter_current_piece_style(self.sender().text())
-            )
-
-        # the "Sound Menu"
-        soundMenu = configMenu.addMenu("Sound")
-        adjustVolumeAct = QAction(QIcon(""), "Adjust Volume", self)
-        soundMenu.addAction(adjustVolumeAct)
-
-        keepSilentAct = QAction(QIcon(""), "Keep Silent", self)
-        soundMenu.addAction(keepSilentAct)
-        keepSilentAct.triggered.connect(self.keep_silent)
-
-        # the "File Menu"
-        openAct = QAction(QIcon(""), "Open...", self)
-        openAct.setShortcut("Ctrl+F")
-        openAct = QAction(QIcon(""), "Open...", self)
-        fileMenu.addAction(openAct)
-        
-        # the "Help Menu"
-        helpMenu = menuBar.addMenu("Help")
-        helpAct = QAction(QIcon(""), "Help", self)
-        helpAct.setShortcut("Ctrl+H")
-        aboutAct = QAction(QIcon(""), "About", self)
-        helpMenu.addAction(helpAct)
-        helpMenu.addAction(aboutAct)
-
 
     def keep_silent(self):
         if self.is_silent:
@@ -249,32 +232,32 @@ class VBord(QMainWindow):
         else:
             self.is_silent = True
 
-    def alter_current_piece_style(self, style):
-        self.current_piece_style = style
-        self.load_pieces()
+    def append_chessboard(self):
 
-    def render_chessboard(self):
-
-        # set the size and placement, whether to show grid
-        self.chessboard = QTableWidget(8, 8, self)
+        # set the base appearance and scaling behavior
         self.chessboard.setMinimumSize(660, 660)
-        self.chessboard.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-
-        self.chessboard.setFrameShape(QFrame.NoFrame)
-        self.chessboard.setShowGrid(False)
-
-        # hide the header
-        self.chessboard.horizontalHeader().setVisible(False)
-        self.chessboard.verticalHeader().setVisible(False)
-
-        # automatically adjust column width and row height
-        self.chessboard.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
-        self.chessboard.verticalHeader().setSectionResizeMode(QHeaderView.Stretch)
 
         for i in range(8):
-            # set the square size
+            # setup square size
             self.chessboard.setRowHeight(i, self.square_size)
             self.chessboard.setColumnWidth(i, self.square_size)
+
+        self.chessboard.horizontalHeader().setVisible(False)
+        self.chessboard.verticalHeader().setVisible(False)
+        self.chessboard.setFrameShape(QFrame.NoFrame)
+        self.chessboard.setShowGrid(False)
+        self.chessboard.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+
+        # set square color
+        light, bold = (
+            self.chessboard_style["light"],
+            self.chessboard_style["bold"],
+        )
+
+        style = {
+            "light": QColor(light[0], light[1], light[2]),
+            "bold": QColor(bold[0], bold[1], bold[2]),
+        }
 
         for hori in range(8):
             for vert in range(8):
@@ -286,11 +269,11 @@ class VBord(QMainWindow):
 
                 # fill different colors for different squares
                 if (vert + hori) % 2 == 1:
-                    b_color = self.chessboard_style["light"]
-                    f_color = self.chessboard_style["bold"]
+                    b_color = style["light"]
+                    f_color = style["bold"]
                 else:
-                    b_color = self.chessboard_style["bold"]
-                    f_color = self.chessboard_style["light"]
+                    b_color = style["bold"]
+                    f_color = style["light"]
                 self.chessboard.item(hori, vert).setBackground(b_color)
                 self.chessboard.item(hori, vert).setForeground(f_color)
 
@@ -311,23 +294,38 @@ class VBord(QMainWindow):
         self.chessboard.item(7, 0).setTextAlignment(Qt.AlignRight | Qt.AlignBottom)
         self.chessboard.item(7, 0).setText("a")
 
-    def game(self, signal):
-        # refresh chessboard after one certain move
-        data = json.loads(signal)
+    def append_manual_area(self):
+
+        # setup the base appearance and scaling behavior
+        self.manual_area.setMaximumSize(240, 660)
+        self.manual_area.setFrameShape(QFrame.NoFrame)
+        self.manual_area.setShowGrid(False)
+        self.manual_area.horizontalHeader().setVisible(False)
+        self.manual_area.verticalHeader().setVisible(False)
+        self.manual_area.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+
+        # setup the column width
+        self.manual_area.setColumnWidth(0, 45)
+        self.manual_area.setColumnWidth(1, 60)
+        self.manual_area.setColumnWidth(1, 60)
+
+    def update_game_status(self, game_signal):
+        # refresh chessboard after one certain move in games
+        data = json.loads(game_signal)
         board, move = data["board"], data["move"]
-        turn, bout = board["turn"], int(board["full"])
-        current_row = self.manual_zone.rowCount()
+        turn, full = board["turn"], int(board["full"])
+        current_row = self.manual_area.rowCount()
 
         if turn == "b":
-            self.manual_zone.insertRow(current_row)
-            current_row = self.manual_zone.rowCount()
+            self.manual_area.insertRow(current_row)
+            current_row = self.manual_area.rowCount()
             for j in range(3):
-                self.manual_zone.setItem(current_row - 1, j, QTableWidgetItem())
+                self.manual_area.setItem(current_row - 1, j, QTableWidgetItem())
 
-            self.manual_zone.item(current_row - 1, 0).setText(str(bout))
-            self.manual_zone.item(current_row - 1, 1).setText(move)
+            self.manual_area.item(current_row - 1, 0).setText(str(full))
+            self.manual_area.item(current_row - 1, 1).setText(move)
         else:
-            self.manual_zone.item(current_row - 1, 2).setText(move)
+            self.manual_area.item(current_row - 1, 2).setText(move)
 
         for hori in range(8):
             for vert in range(8):
@@ -349,7 +347,6 @@ class VBord(QMainWindow):
             self.move_sound.play()
 
     def dragEnterEvent(self, event):
-        pos = event.pos()
         event.accept()
 
     def dropEvent(self, event):
@@ -364,6 +361,6 @@ class VBord(QMainWindow):
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
-    window = VBord()
-    window.show()
+    hera = Hera()
+    hera.show()
     sys.exit(app.exec())

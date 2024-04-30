@@ -1,9 +1,0 @@
-QTableWidgetItem {
-	/* border: 1px solid rgba(0, 0, 0, 0.23); */
-	/* border-radius: 22px; */
-	background-color: rgba(143, 188, 139, 0);
-}
-
-.a1 {
-	background-color: rgba(143, 188, 139, 0.23);
-}

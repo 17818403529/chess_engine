@@ -11,7 +11,7 @@
     },
     "square_size": 81,
     "current_piece_style": "gioco",
-    "pieces_dir": "C:\\Users\\17818\\Music\\vchess\\resource\\images\\pieces\\",
+    "piece_image_dir": "C:\\Users\\17818\\Music\\vchess\\resource\\images\\pieces\\",
     "sound_dir": "C:\\Users\\17818\\Music\\vchess\\resource\\sounds\\",
     "piece_styles": {
         "alpha": [

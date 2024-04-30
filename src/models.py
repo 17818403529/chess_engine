@@ -758,6 +758,7 @@ from random import random
 
 
 def engine(board, chess_dict):
+    sleep(0.3)
     legal_moves = Chess.gather_legal_moves(board, chess_dict)
     capture = []
     check = []
