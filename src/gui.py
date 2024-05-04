@@ -2,7 +2,7 @@ import sys
 import os
 import json
 from random import choice
-from time import sleep
+import time
 
 import pygame
 from models import *
@@ -17,9 +17,25 @@ with open(config_path, "r", encoding="utf-8") as f:
 pygame.mixer.init()
 
 
+class Player(QLabel):
+    def __init__(self, symbol):
+        super().__init__(symbol)
+        self.setFont(QFont("Roman times", 18, QFont.Bold))
+
+
+class Clock(QLabel):
+    def __init__(self, symbol):
+        super().__init__(symbol)
+        self.setFont(QFont("Consolas", 28, QFont.Bold))
+        self.setAutoFillBackground(True)
+
+
 class Piece(QLabel):
-    def model(self, image, size):
-        self.setPixmap(image.scaled(size, size))
+    def __init__(self, iamge, size):
+        super().__init__("")
+        self.setAlignment(Qt.AlignCenter)
+        if iamge:
+            self.setPixmap(iamge.scaled(size, size))
 
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:
@@ -34,89 +50,94 @@ class Piece(QLabel):
             drag.exec_(Qt.MoveAction)
 
 
-class Game(QThread):
-    def __init__(self, signal, fen):
+class ClockThread(QThread):
+    signal = pyqtSignal(str)
+
+    def __init__(self, total, added, game_signal):
         super().__init__()
-        self.pgn = {}
-        self.signal = signal
-        self.chess_dict = Chess.gen_chess_dict()
-        self.fen = fen
+        self.game_signal = game_signal
+        self.game_signal.connect(self.change_hands)
+        self.clock = {"w": total, "b": total, "turn": "w"}
+        self.turn = self.clock["turn"]
+        self.added = added
 
-    def judge(self, move, board):
-
-        # move = engine(board, self.chess_dict)
-        # if move in legal_moves.keys():
-        #     board = Chess.take_a_move(board, legal_moves[move], self.chess_dict)
-        #     self.current_fen = Chess.gen_fen(board).split()[0]
-        #     self.pgn[move] = self.current_fen
-        # else:
-        #     return False
-
-        if "#" in move:
-            # checkmate
-            return True
-
-        legal_moves = Chess.gather_legal_moves(board, self.chess_dict)
-        if legal_moves == {}:
-            # stalemate
-            return True
-
-        # 50 moves draw
-        if board["half"] == "100":
-            return True
-
-        # 3 rep draw
-        pgn = list(self.pgn.values())
-        pgn.reverse()
-        repe = 0
-        for i in pgn:
-            if i == self.current_fen:
-                repe += 1
-        if repe == 4:
-            return True
-
-        # insufficient particle force
-        if len(board["blank"]) == 62:
-            return True
-
-        if len(board["blank"]) == 61:
-            for i in board["pieces"].values():
-                if i in "BbNn":
-                    return True
-        return False
+    def change_hands(self, game_signal):
+        clock = json.loads(game_signal)
+        self.clock = clock
+        self.clock[self.turn] += self.added
+        self.turn = clock["turn"]
 
     def run(self):
-        board = Chess.convert(self.fen, self.chess_dict)
         while True:
-            move = engine(board, self.chess_dict)
-            result = self.judge(move, board)
-            self.signal.emit(json.dumps(result))
-            if result["status"]:
-                break
-            board = result["board"]
+            start_time = time.time()
+            sleep(0.001)
+            end_time = time.time()
+            used_time = end_time - start_time
+            if self.clock[self.turn] - int(self.clock[self.turn]) < used_time:
+                self.clock[self.turn] -= used_time
+                self.signal.emit(json.dumps(self.clock))
+            else:
+                self.clock[self.turn] -= used_time
+
+
+class PlayerThread(QThread):
+
+    signal = pyqtSignal(str)
+
+    def __init__(self, player_signal, fen):
+        super().__init__()
+        self.oppo = "w" if self.side == "b" else "b"
+        self.player_signal = player_signal
+        self.player_signal.connect(self.activate)
+        self.fen = fen
+        self.chess_dict = Chess.gen_chess_dict()
+        self.chess = Chess.convert(self.fen, self.chess_dict)
+
+
+    def activate(self):
+        move, self.chess = engine(self.chess, self.chess_dict)
+        self.signal.emit(move)
+
+    def run(self):
+        while True:
+            sleep(1000)
 
 
 class Hera(QMainWindow):
 
     # signals
-    game_signal = pyqtSignal(str)
-    white_signal = pyqtSignal(str)
-    black_signal = pyqtSignal(str)
+    clock_signal = pyqtSignal(str)
+    white_player_signal = pyqtSignal(str)
+    black_player_signal = pyqtSignal(str)
 
     def __init__(self):
         super().__init__()
         # basic appearance setup
-        self.centralWidget = QWidget()
-        self.layout = QGridLayout()
-        self.chessboard = QTableWidget(8, 8, self)
-        self.manual_area = QTableWidget(1, 3, self)
-        self.load_piece_image()
-        self.move_sound = pygame.mixer.Sound(self.sound_dir + "move.wav")
+        self.setWindowTitle("Hera")
+        self.setGeometry((1920 - 920) // 7 * 2, (1080 - 720) // 3, 920, 720)
+        self.setAcceptDrops(True)
+        self.board = QTableWidget(8, 8, self)
+        self.manual = QTableWidget(1, 3, self)
+        self.black_player = Player("Miss Ace")
+        self.black_clock = Clock("04:35")
+        self.white_player = Player("Souna")
+        self.white_clock = Clock("07:22")
+        self.board.setParent(self)
+        self.manual.setParent(self)
+        self.black_player.setParent(self)
+        self.black_clock.setParent(self)
+        self.white_player.setParent(self)
+        self.white_clock.setParent(self)
+
+        self.timing_color = QPalette()
+        self.timing_color.setColor(QPalette.Window, QColor(143, 188, 139))
+        self.stop_color = QPalette()
+        self.stop_color.setColor(QPalette.Window, QColor(250, 235, 215))
 
         # load config
         self.piece_image_dir = config["piece_image_dir"]
         self.sound_dir = config["sound_dir"]
-        self.chessboard_style = config["chessboard_style"]
+        self.board_style = config["board_style"]
         self.square_size = config["square_size"]
         self.piece_styles = config["piece_styles"]
         self.current_piece_style = config["current_piece_style"]
@@ -126,13 +147,39 @@ class Hera(QMainWindow):
         self.piece_size = None
         self.is_silent = True
         self.game_thread = None
-        self.game_signal.connect(self.update_game_status)
+
+        # load resource file
+        self.load_piece_image()
+        self.move_sound = pygame.mixer.Sound(self.sound_dir + "move.wav")
 
         # append components
-        self.compose()
-        self.append_menu()
-        self.append_chessboard()
-        self.append_manual_area()
+        self.draw_menu()
+        self.draw_board(80)
+        self.draw_manual(80)
+        self.draw_info(80)
+
+        # game
+        self.chess_dict = Chess.gen_chess_dict()
+        self.chess = None
+        self.white_player_thread = None
+        self.black_player_thread = None
+        self.clock_thread = None
+
+    def display_clock(self, signal):
+        data = json.loads(signal)
+        if data["turn"] == "w":
+            self.white_clock.setPalette(self.timing_color)
+            self.black_clock.setPalette(self.stop_color)
+            w_clock = time.strftime("%M:%S", time.localtime(data["w"]))
+            self.white_clock.setText(w_clock)
+            data["turn"] = "b"
+        else:
+            self.black_clock.setPalette(self.timing_color)
+            self.white_clock.setPalette(self.stop_color)
+            b_clock = time.strftime("%M:%S", time.localtime(data["b"]))
+            self.black_clock.setText(b_clock)
+            data["turn"] = "w"
+        self.clock_signal.emit(json.dumps(data))
 
     def load_piece_image(self):
         # load the picture of each piece from disk
@@ -151,17 +198,7 @@ class Hera(QMainWindow):
             )
             self.piece_image[symbol] = QPixmap(img_path)
 
-    def compose(self):
-        self.setAcceptDrops(True)
-        self.setWindowTitle("VBord")
-        self.setCentralWidget(self.centralWidget)
-        self.setGeometry(480, 200, 1000, 720)
-        self.layout.setSpacing(10)
-        self.layout.addWidget(self.chessboard, 0, 0, 1, 1)
-        self.layout.addWidget(self.manual_area, 0, 1, 1, 1)
-        self.centralWidget.setLayout(self.layout)
-
-    def append_menu(self):
+    def draw_menu(self):
         menuBar = self.menuBar()
 
         # append "File" menu
@@ -172,12 +209,19 @@ class Hera(QMainWindow):
         openAct = QAction(QIcon(""), "Open...", self)
         fileMenu.addAction(openAct)
 
-        # the "Game Menu"
+        # append "Game" menu
         gameMenu = menuBar.addMenu("Game")
 
-        newGameAct = QAction(QIcon(""), "new game", self)
-        gameMenu.addAction(newGameAct)
-        newGameAct.triggered.connect(self.new_game)
+        # append "New Game" submenu
+        newGameMenu = gameMenu.addMenu("New Game")
+
+        standardAct = QAction(QIcon(""), "standard", self)
+        standardAct.triggered.connect(lambda: self.start_new_game("standard"))
+        newGameMenu.addAction(standardAct)
+
+        fromPositionAct = QAction(QIcon(""), "from position", self)
+        fromPositionAct.triggered.connect(lambda: self.new_game("from position"))
+        newGameMenu.addAction(fromPositionAct)
 
         # append "Config" menu
         configMenu = menuBar.addMenu("Configs")
@@ -216,15 +260,22 @@ class Hera(QMainWindow):
         self.current_piece_style = style
         self.load_piece_image()
 
-    def new_game(self):
-        if self.game_thread:
-            self.game_thread.terminate()
-            self.game_thread.wait()
 
-        self.game_thread = Game(
-            self.game_signal, "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
+    def start_new_game(self, mode):
+        if mode == "standard":
+            fen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
+        self.chess = Chess.convert(fen, self.chess_dict)
+        self.white_player_thread = PlayerThread(
+            "w", 150, 0, self.white_player_signal, fen
         )
-        self.game_thread.start()
+        self.white_player_signal.signal.connect(self.display_move)
+        self.black_player_thread = PlayerThread(
+            "b", 150, 0, self.black_player_signal, fen
+        )
+        self.black_player_thread.signal.connect(self.display_move)
+        self.clock_thread = ClockThread(150, 0, self.clock_signal)
+        self.clock_thread.signal.connect(self.display_clock)
+        self.clock_thread.start()
 
     def keep_silent(self):
         if self.is_silent:
@@ -232,26 +283,50 @@ class Hera(QMainWindow):
         else:
             self.is_silent = True
 
-    def append_chessboard(self):
+    def draw_info(self, basic_width):
+        self.black_player.setGeometry(10, 32, basic_width * 2, basic_width)
+        self.black_clock.setGeometry(
+            10 + basic_width * 6, 32, basic_width * 2, basic_width
+        )
+        self.white_player.setGeometry(
+            10, 32 + basic_width * 9, basic_width * 2, basic_width
+        )
+        self.white_clock.setGeometry(
+            10 + basic_width * 6, 32 + basic_width * 9, basic_width * 2, basic_width
+        )
 
-        # set the base appearance and scaling behavior
-        self.chessboard.setMinimumSize(660, 660)
+        self.black_player.setFont(
+            QFont("Roman times", 18 * basic_width // 80, QFont.Bold)
+        )
+        self.black_clock.setFont(
+            QFont("Roman times", 28 * basic_width // 80, QFont.Bold)
+        )
+        self.white_player.setFont(
+            QFont("Roman times", 18 * basic_width // 80, QFont.Bold)
+        )
+        self.white_clock.setFont(
+            QFont("Roman times", 28 * basic_width // 80, QFont.Bold)
+        )
+
+    def draw_board(self, basic_width):
+
+        square_size = basic_width
+        self.board.setGeometry(10, 32 + basic_width, square_size * 8, square_size * 8)
 
         for i in range(8):
             # setup square size
-            self.chessboard.setRowHeight(i, self.square_size)
-            self.chessboard.setColumnWidth(i, self.square_size)
+            self.board.setRowHeight(i, square_size)
+            self.board.setColumnWidth(i, square_size)
 
-        self.chessboard.horizontalHeader().setVisible(False)
-        self.chessboard.verticalHeader().setVisible(False)
-        self.chessboard.setFrameShape(QFrame.NoFrame)
-        self.chessboard.setShowGrid(False)
-        self.chessboard.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.board.horizontalHeader().setVisible(False)
+        self.board.verticalHeader().setVisible(False)
+        self.board.setFrameShape(QFrame.NoFrame)
+        self.board.setShowGrid(False)
 
         # set square color
         light, bold = (
-            self.chessboard_style["light"],
-            self.chessboard_style["bold"],
+            self.board_style["light"],
+            self.board_style["bold"],
         )
 
         style = {
@@ -259,104 +334,116 @@ class Hera(QMainWindow):
             "bold": QColor(bold[0], bold[1], bold[2]),
         }
 
-        for hori in range(8):
-            for vert in range(8):
+        for file in range(8):
+            for rank in range(8):
                 # create item and set font
-                self.chessboard.setItem(hori, vert, QTableWidgetItem())
-                self.chessboard.item(hori, vert).setFont(
-                    QFont("consolas", 10, QFont.Bold)
+                self.board.setItem(file, rank, QTableWidgetItem())
+                self.board.item(file, rank).setFont(
+                    QFont("consolas", basic_width // 7, QFont.Bold)
                 )
 
                 # fill different colors for different squares
-                if (vert + hori) % 2 == 1:
+                if (rank + file) % 2 == 1:
                     b_color = style["light"]
                     f_color = style["bold"]
                 else:
                     b_color = style["bold"]
                     f_color = style["light"]
-                self.chessboard.item(hori, vert).setBackground(b_color)
-                self.chessboard.item(hori, vert).setForeground(f_color)
+                self.board.item(file, rank).setBackground(b_color)
+                self.board.item(file, rank).setForeground(f_color)
 
                 # fill in the row and column numbers
-                if hori == 7:
-                    self.chessboard.item(hori, vert).setTextAlignment(
+                if file == 7:
+                    self.board.item(file, rank).setTextAlignment(
                         Qt.AlignRight | Qt.AlignBottom
                     )
-                    self.chessboard.item(hori, vert).setText("abcdefgh"[vert])
-                if vert == 0:
-                    self.chessboard.item(hori, vert).setTextAlignment(
+                    self.board.item(file, rank).setText("abcdefgh"[rank])
+                if rank == 0:
+                    self.board.item(file, rank).setTextAlignment(
                         Qt.AlignLeft | Qt.AlignTop
                     )
-                    self.chessboard.item(hori, vert).setText("87654321"[hori])
+                    self.board.item(file, rank).setText("87654321"[file])
+        # the a1 square
+        self.board.item(7, 0).setText("1")
 
-        # special square "a1"
-        self.chessboard.setItem(7, 0, QTableWidgetItem())
-        self.chessboard.item(7, 0).setTextAlignment(Qt.AlignRight | Qt.AlignBottom)
-        self.chessboard.item(7, 0).setText("a")
+    def draw_manual(self, basic_width):
 
-    def append_manual_area(self):
+        self.manual.setGeometry(
+            basic_width * 8 + 20,
+            basic_width + 32,
+            int(basic_width * 2.6),
+            basic_width * 8,
+        )
 
         # setup the base appearance and scaling behavior
-        self.manual_area.setMaximumSize(240, 660)
-        self.manual_area.setFrameShape(QFrame.NoFrame)
-        self.manual_area.setShowGrid(False)
-        self.manual_area.horizontalHeader().setVisible(False)
-        self.manual_area.verticalHeader().setVisible(False)
-        self.manual_area.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.manual.setFrameShape(QFrame.NoFrame)
+        self.manual.setShowGrid(False)
+        self.manual.horizontalHeader().setVisible(False)
+        self.manual.verticalHeader().setVisible(False)
+        self.manual.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
         # setup the column width
-        self.manual_area.setColumnWidth(0, 45)
-        self.manual_area.setColumnWidth(1, 60)
-        self.manual_area.setColumnWidth(1, 60)
+        self.manual.setColumnWidth(0, int(basic_width * 0.58))
+        self.manual.setColumnWidth(1, basic_width)
+        self.manual.setColumnWidth(2, basic_width)
 
-    def update_game_status(self, game_signal):
-        # refresh chessboard after one certain move in games
-        data = json.loads(game_signal)
-        board, move = data["board"], data["move"]
-        turn, full = board["turn"], int(board["full"])
-        current_row = self.manual_area.rowCount()
+    def display_move(self, signal):
+
+        # refresh board after one certain move in games
+        game = json.loads(signal)
+        move, chess, status = game["move"], game["chess"], game["status"]
+        if chess["turn"] == "w":
+            self.white_player_signal.emit(move)
+        else:
+            self.black_player_signal.emit(move)
+
+        if status:
+            QMessageBox.information(self, "Error", status)
+            return False
+
+        # refresh board
+        for rank in range(8):
+            for file in range(8):
+                square = "abcdefgh"[file] + "87654321"[rank]
+                if square not in chess["blank"]:
+                    # put piece at a square if it is not blank
+                    symbol = chess["pieces"][square]
+                    piece = Piece(self.piece_image[symbol], self.piece_size)
+                else:
+                    piece = Piece(None, self.piece_size)
+
+                self.board.setCellWidget(rank, file, piece)
+
+        # refresh manual area
+        turn, full = chess["turn"], int(chess["full"])
+        current_row = self.manual.rowCount()
 
         if turn == "b":
-            self.manual_area.insertRow(current_row)
-            current_row = self.manual_area.rowCount()
+            # append a new chess row
+            self.manual.insertRow(current_row)
+            current_row = self.manual.rowCount()
             for j in range(3):
-                self.manual_area.setItem(current_row - 1, j, QTableWidgetItem())
+                self.manual.setItem(current_row - 1, j, QTableWidgetItem())
 
-            self.manual_area.item(current_row - 1, 0).setText(str(full))
-            self.manual_area.item(current_row - 1, 1).setText(move)
+            # append move
+            self.manual.item(current_row - 1, 0).setText(str(full))
+            self.manual.item(current_row - 1, 1).setText(move)
         else:
-            self.manual_area.item(current_row - 1, 2).setText(move)
-
-        for hori in range(8):
-            for vert in range(8):
-                piece = Piece("")
-                square = "abcdefgh"[hori] + "87654321"[vert]
-
-                if square not in board["blank"]:
-                    # put piece at a square if it is not blank
-                    symbol = board["pieces"][square]
-                    try:
-                        piece.model(self.pieces[symbol], self.piece_size)
-                    except:
-                        print(symbol, board["pieces"])
-
-                piece.setAlignment(Qt.AlignCenter)
-                self.chessboard.setCellWidget(vert, hori, piece)
+            # append move
+            self.manual.item(current_row - 1, 2).setText(move)
 
         if not self.is_silent:
             self.move_sound.play()
 
-    def dragEnterEvent(self, event):
-        event.accept()
+    def resizeEvent(self, *args, **kwargs):
+        window_width = self.geometry().width()
+        window_height = self.geometry().height()
 
-    def dropEvent(self, event):
-        pos = event.pos()
-        square = self.chessboard.itemAt(pos)
-        hori, vert = square.row(), square.column()
-        print(hori, vert)
-        piece = event.source()
-        self.chessboard.setCellWidget(hori, vert, piece)
-        event.accept()
+        basic_width = min(((window_width - 30) // 11), ((window_height - 32) // 10))
+
+        self.draw_board(basic_width)
+        self.draw_manual(basic_width)
+        self.draw_info(basic_width)
 
 
 if __name__ == "__main__":
