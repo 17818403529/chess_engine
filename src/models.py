@@ -137,9 +137,11 @@ class Piece:
         return target
 
 
-class Chess:
+class ChessLib:
+    def __init__(self):
+        self.chess_dict = self.gen_chess_dict()
 
-    def gen_chess_dict():
+    def gen_chess_dict(self):
 
         target_dict = {}
         for i in "RNBQKPrnbqkp":
@@ -252,9 +254,9 @@ class Chess:
             "passer_pawn": passer_pawn,
         }
 
-    def convert(fen, chess_dict):
+    def convert(self, fen):
         fen = fen.split()
-        # a legal fen must have 6 parts
+        # a unchecked fen must have 6 parts
         if len(fen) != 6:
             return False
         else:
@@ -304,7 +306,7 @@ class Chess:
                 file = file + int(i)
                 if file > 8:
                     return False
-                chess["blank"] += chess_dict["blank"][square][str(int(i))]
+                chess["blank"] += self.chess_dict["blank"][square][str(int(i))]
 
             elif i in "rbnqkpRBNQKP":
                 # alter the packed when meets with a piece
@@ -374,14 +376,14 @@ class Chess:
         # fen[3] shows information of passer
         passer = fen[3]
         if passer != "-":
-            if passer not in chess_dict["passers"]:
+            if passer not in self.chess_dict["passers"]:
                 # passers only appears at certain squares
                 return False
             else:
                 # passer must has at least one opposite pawn neighbor
                 flag = False
                 pawn = "P" if chess["turn"] == "w" else "p"
-                for square in chess_dict["passer_nbr"][passer]:
+                for square in self.chess_dict["passer_nbr"][passer]:
                     if square in chess[chess["turn"]]:
                         if chess["pieces"][square] == pawn:
                             flag = True
@@ -391,13 +393,13 @@ class Chess:
 
         return chess
 
-    def is_reachable(chess, target, side, chess_dict):
+    def is_reachable(self, chess, target, side):
         if target in chess[side]:
             return False
 
         for square in chess[side]:
             symbol = chess["pieces"][square]
-            _targets = chess_dict["target_dict"][symbol][square]
+            _targets = self.chess_dict["target_dict"][symbol][square]
 
             if symbol in "RBQrbq":
                 for direc in _targets:
@@ -418,19 +420,19 @@ class Chess:
                         return True
         return False
 
-    def is_checked(chess, chess_dict):
+    def is_checked(self, chess):
         result = {"w": False, "b": False}
-        result["w"] = Chess.is_reachable(chess, chess["K"], "b", chess_dict)
-        result["b"] = Chess.is_reachable(chess, chess["k"], "w", chess_dict)
+        result["w"] = self.is_reachable(chess, chess["K"], "b")
+        result["b"] = self.is_reachable(chess, chess["k"], "w")
         return result
 
-    def gather_unchecked_moves(chess, chess_dict):
-        unchecked = []
+    def gather_unrestrained_moves(self, chess):
+        unrestrained = []
         oppo_side = "w" if chess["turn"] == "b" else "b"
 
         for square in chess[chess["turn"]]:
             symbol = chess["pieces"][square]
-            targets = chess_dict["target_dict"][symbol][square]
+            targets = self.chess_dict["target_dict"][symbol][square]
             symbol = symbol.upper()
 
             if symbol in "RBQ":
@@ -438,9 +440,9 @@ class Chess:
                 for direc in targets:
                     for i in direc:
                         if i in chess["blank"]:
-                            unchecked.append(symbol + square + i)
+                            unrestrained.append(symbol + square + i)
                         elif i in chess[oppo_side]:
-                            unchecked.append(symbol + square + "x" + i)
+                            unrestrained.append(symbol + square + "x" + i)
                             break
                         else:
                             break
@@ -449,17 +451,17 @@ class Chess:
                 # King
                 for i in targets:
                     if i in chess["blank"]:
-                        unchecked.append("K" + square + i)
+                        unrestrained.append("K" + square + i)
                     elif i in chess[oppo_side]:
-                        unchecked.append("K" + square + "x" + i)
+                        unrestrained.append("K" + square + "x" + i)
 
             elif symbol == "N":
                 # Knight
                 for i in targets:
                     if i in chess["blank"]:
-                        unchecked.append("N" + square + i)
+                        unrestrained.append("N" + square + i)
                     elif i in chess[oppo_side]:
-                        unchecked.append("N" + square + "x" + i)
+                        unrestrained.append("N" + square + "x" + i)
 
             else:
                 # pawns
@@ -468,9 +470,9 @@ class Chess:
                         if i[1] in "18":
                             # pawn promotion
                             for asc in "RNBQ":
-                                unchecked.append("P" + square + i + "=" + asc)
+                                unrestrained.append("P" + square + i + "=" + asc)
                         else:
-                            unchecked.append("P" + square + i)
+                            unrestrained.append("P" + square + i)
                     else:
                         break
 
@@ -479,11 +481,11 @@ class Chess:
                         if i[1] in "18":
                             # pawn promotion
                             for asc in "RNBQ":
-                                unchecked.append("P" + square + "x" + i + "=" + asc)
+                                unrestrained.append("P" + square + "x" + i + "=" + asc)
                         else:
-                            unchecked.append("P" + square + "x" + i)
+                            unrestrained.append("P" + square + "x" + i)
                     elif i == chess["passer"]:
-                        unchecked.append("P" + square + "x" + i)
+                        unrestrained.append("P" + square + "x" + i)
 
         # castling
         symbols = "KQ" if oppo_side == "b" else "kq"
@@ -494,25 +496,24 @@ class Chess:
                 infeasible += i
                 continue
 
-            for square in chess_dict["castle"][i][0]:
-                if Chess.is_reachable(chess, square, oppo_side, chess_dict):
+            for square in self.chess_dict["castle"][i][0]:
+                if self.is_reachable(chess, square, oppo_side):
                     infeasible += i
                     break
 
-            for square in chess_dict["castle"][i][1]:
+            for square in self.chess_dict["castle"][i][1]:
                 if square not in chess["blank"]:
                     infeasible += i
                     break
 
-        result = []
         if symbols[0] not in infeasible:
-            unchecked.append("O-O")
+            unrestrained.append("O-O")
         if symbols[1] not in infeasible:
-            unchecked.append("O-O-O")
+            unrestrained.append("O-O-O")
 
-        return unchecked
+        return unrestrained
 
-    def take_a_move(chess, move, chess_dict):
+    def take_a_move(self, chess, move):
         chess = deepcopy(chess)
         oppo_side = "w" if chess["turn"] == "b" else "b"
 
@@ -520,7 +521,7 @@ class Chess:
             # castling kings
             if chess["turn"] == "w":
                 symbol = "K"
-                square, target = chess_dict["castle_move"][symbol][move]
+                square, target = self.chess_dict["castle_move"][symbol][move]
                 chess[symbol] = target
 
                 for i in "KQ":
@@ -528,7 +529,7 @@ class Chess:
                         chess["castle"].remove(i)
             else:
                 symbol = "k"
-                square, target = chess_dict["castle_move"][symbol][move]
+                square, target = self.chess_dict["castle_move"][symbol][move]
                 chess["k"] = target
 
                 for i in "kq":
@@ -548,7 +549,7 @@ class Chess:
             else:
                 symbol = "r"
 
-            square, target = chess_dict["castle_move"][symbol][move]
+            square, target = self.chess_dict["castle_move"][symbol][move]
 
             chess["blank"].append(square)
             chess["blank"].remove(target)
@@ -585,7 +586,7 @@ class Chess:
 
             if symbol in "Pp" and target == chess["passer"]:
                 # eat passers-by
-                _target = chess_dict["passer_pawn"][target]
+                _target = self.chess_dict["passer_pawn"][target]
                 del chess["pieces"][_target]
                 chess[oppo_side].remove(_target)
 
@@ -617,14 +618,14 @@ class Chess:
 
         if move[0] == "P" and move[2] == "2" and move[4] == "4":
             passer = move[1] + "3"
-            for square in chess_dict["passer_nbr"][passer]:
+            for square in self.chess_dict["passer_nbr"][passer]:
                 if square in chess[oppo_side]:
                     if chess["pieces"][square] == "p":
                         chess["passer"] = passer
 
         if move[0] == "p" and move[2] == "7" and move[4] == "5":
             passer = move[1] + "6"
-            for square in chess_dict["passer_nbr"][passer]:
+            for square in self.chess_dict["passer_nbr"][passer]:
                 if square in chess[oppo_side]:
                     if chess["pieces"][square] == passer:
                         chess["passer"] = passer
@@ -644,7 +645,7 @@ class Chess:
 
         return chess
 
-    def format_moves(chess, unchecked):
+    def format_moves(self, chess, unrestrained):
         formatted = {}
         repe = {}
 
@@ -658,7 +659,7 @@ class Chess:
             for rank in "12345678":
                 repe[file + rank] = []
 
-        for move in unchecked:
+        for move in unrestrained:
             if move in ["O-O-O", "O-O"]:
                 formatted[move] = move
             elif move[0] == "P":
@@ -672,7 +673,7 @@ class Chess:
 
             else:
                 if move[0] in pieces:
-                    if "+" in move:
+                    if "+" in move or "#" in move:
                         repe[move[-3:-1]].append(move)
                     else:
                         repe[move[-2:]].append(move)
@@ -705,24 +706,38 @@ class Chess:
                         formatted[i[0] + i[3:]] = i
         return formatted
 
-    def gather_legal_moves(chess, chess_dict):
-        unchecked = Chess.gather_unchecked_moves(chess, chess_dict)
-        legal_moves = []
+    def gather_unchecked_moves(self, chess):
+        unrestrained = self.gather_unrestrained_moves(chess)
+        unchecked = []
 
-        for move in unchecked:
-            _chess = Chess.take_a_move(chess, move, chess_dict)
-            _is_checked = Chess.is_checked(_chess, chess_dict)
+        for move in unrestrained:
+            _chess = self.take_a_move(chess, move)
+            _is_checked = self.is_checked(_chess)
             oppo_side = "b" if chess["turn"] == "w" else "w"
             if _is_checked[chess["turn"]]:
                 continue
             elif _is_checked[oppo_side]:
-                legal_moves.append(move + "+")
+                unchecked.append(move + "+")
             else:
-                legal_moves.append(move)
+                unchecked.append(move)
 
-        return Chess.format_moves(chess, legal_moves)
+        return self.format_moves(chess, unchecked)
 
-    def gen_fen(chess):
+    def gather_legal_moves(self, chess):
+        unchecked = self.gather_unchecked_moves(chess)
+        legal_moves = {}
+        for move in unchecked.keys():
+            if "+" in move:
+                _chess = self.take_a_move(chess, unchecked[move])
+                if not self.gather_unchecked_moves(_chess):
+                    legal_moves[move[0:-1] + "#"] = unchecked[move][0:-1] + "#"
+                else:
+                    legal_moves[move] = unchecked[move]
+            else:
+                legal_moves[move] = unchecked[move]
+        return legal_moves
+
+    def gen_fen(self, chess):
         fen = ""
         for rank in "87654321":
             empty = 0
@@ -752,76 +767,73 @@ class Chess:
         )
         return fen
 
+    def judge(self, chess, move, move_history):
 
-def judge(self, chess, chess_dict, move, move_history):
+        status = ""
 
-    status = ""
+        if "#" in move:
+            status = "checkmate"
 
-    if "#" in move:
-        status = "checkmate"
+        unchecked_moves = self.gather_unchecked_moves(chess)
+        if unchecked_moves == {}:
+            status = "stalemate"
 
-    legal_moves = Chess.gather_legal_moves(chess, chess_dict)
-    if legal_moves == {}:
-        status = "stalemate"
+        if chess["half"] == "100":
+            status = "50 moves draw"
 
-    if chess["half"] == "100":
-        status = "50 moves draw"
+        # rep3 draw
+        placement = list(move_history.values())
+        placement.reverse()
+        repeated = 0
+        for i in placement:
+            if i == fen:
+                repeated += 1
+                if repeated == 3:
+                    status = "3rep draw"
 
-    # rep3 draw
-    placement = list(move_history.values())
-    placement.reverse()
-    repeated = 0
-    for i in placement:
-        if i == fen:
-            repeated += 1
-            if repeated == 3:
-                status = "3rep draw"
+        # insufficient force
+        if len(chess["blank"]) == 62:
+            status = "insufficient force"
 
-    # insufficient force
-    if len(chess["blank"]) == 62:
-        status = "insufficient force"
+        elif len(chess["blank"]) == 61:
+            for i in chess["pieces"].values():
+                if i in "BbNn":
+                    status = "insufficient force"
 
-    elif len(chess["blank"]) == 61:
-        for i in chess["pieces"].values():
-            if i in "BbNn":
-                status = "insufficient force"
+        return status
 
-    return status
+    def is_game_unplayable(self, chess):
 
+        if chess:
+            turn = chess["turn"]
+            oppo = "b" if turn == "w" else "w"
+            is_checked = self.is_checked(chess)
 
-def is_game_unplayable(self, fen):
-
-    chess = Chess.convert(fen, self.chess_dict)
-
-    if chess:
-        turn = chess["turn"]
-        oppo = "b" if turn == "w" else "w"
-        is_checked = Chess.is_checked(chess, self.chess_dict)
-
-        if is_checked[oppo]:
-            return "illegal fen"
-        else:
-            if is_checked[turn]:
-                if not Chess.gather_legal_moves(chess, self.chess_dict):
-                    return "checkmate"
-                else:
-                    return False
+            if is_checked[oppo]:
+                return "illegal fen"
             else:
-                if not Chess.gather_legal_moves(chess, self.chess_dict):
-                    return "stalemate"
+                if is_checked[turn]:
+                    if not self.gather_unchecked_moves(chess):
+                        return "checkmate"
+                    else:
+                        return False
                 else:
-                    return False
-    else:
-        return "illegal fen"
+                    if not self.gather_unchecked_moves(chess):
+                        return "stalemate"
+                    else:
+                        return False
+        else:
+            return "illegal fen"
 
 
 from time import sleep
 from random import random
 
 
-def engine(chess, chess_dict):
+def engine(chess):
     sleep(0.3)
-    legal_moves = Chess.gather_legal_moves(chess, chess_dict)
+    cb = ChessLib()
+    legal_moves = cb.gather_legal_moves(chess)
     capture = []
     check = []
     king = []
@@ -851,20 +863,22 @@ def engine(chess, chess_dict):
             move = choice(king)
 
     if move:
-        return move, Chess.take_a_move(legal_moves[move])
+        return move, cb.take_a_move(chess, legal_moves[move])
     else:
         move = choice(list(legal_moves.keys()))
-        return move, Chess.take_a_move(legal_moves[move])
+        return move, cb.take_a_move(chess, legal_moves[move])
 
 
 if __name__ == "__main__":
-    fen = "r4b1r/1b2k3/p1p1pn1n/5pN1/QP2P1Pp/4P1RP/P2K4/RNB2B2 w - - 1 2"
-
-    chess_dict = Chess.gen_chess_dict()
-    chess = Chess.convert(fen, chess_dict)
-    print(chess)
-    # legal_moves = gather_legal_moves(chess, chess_dict)
+    fen = "7k/7P/7K/8/3B4/8/8/8 b - - 1 1"
+    cl = ChessLib()
+    print(cl.is_game_unplayable(fen))
+    # chess = cl.convert(fen)
+    # print(chess)
+    # unchecked = cl.gather_unchecked_moves(chess)
+    # legal_moves = cl.gather_legal_moves(chess, unchecked)
     # print(legal_moves)
 
     # from vfunc import *
-    # vfunc(gen_fen,(chess,))
+
+    # vfunc(cl.convert, (fen,))

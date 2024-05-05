@@ -1,7 +1,7 @@
 import sys
 import os
 import json
-from random import choice
+from random import choice, randint, random
 import time
 
 import pygame
@@ -53,62 +53,62 @@ class Piece(QLabel):
 class ClockThread(QThread):
     signal = pyqtSignal(str)
 
-    def __init__(self, total, added, game_signal):
+    def __init__(self, clock_signal, time_limit, time_step):
         super().__init__()
-        self.game_signal = game_signal
-        self.game_signal.connect(self.change_hands)
-        self.clock = {"w": total, "b": total, "turn": "w"}
-        self.turn = self.clock["turn"]
-        self.added = added
+        self.turn = None
+        self.clock_signal = clock_signal
+        self.clock_signal.connect(self.swap)
+        self.clock = {"event": "clock", "w": time_limit, "b": time_limit, "turn": None}
+        self.time_step = time_step
 
-    def change_hands(self, game_signal):
-        clock = json.loads(game_signal)
-        self.clock = clock
-        self.clock[self.turn] += self.added
-        self.turn = clock["turn"]
+    def swap(self, clock_signal):
+        self.turn = clock_signal
+        self.clock["turn"] = clock_signal
 
     def run(self):
+        self.signal.emit(json.dumps(self.clock))
         while True:
             start_time = time.time()
-            sleep(0.001)
-            end_time = time.time()
-            used_time = end_time - start_time
-            if self.clock[self.turn] - int(self.clock[self.turn]) < used_time:
+            time.sleep(0.001)
+            used_time = time.time() - start_time
+            if self.turn:
+                ts = self.clock[self.turn]
                 self.clock[self.turn] -= used_time
-                self.signal.emit(json.dumps(self.clock))
-            else:
-                self.clock[self.turn] -= used_time
+                if int(ts) - int(self.clock[self.turn]) == 1:
+                    self.signal.emit(json.dumps(self.clock))
 
 
-class PlayerThread(QThread):
+class GameThread(QThread):
 
     signal = pyqtSignal(str)
 
-    def __init__(self, player_signal, fen):
+    def __init__(self, game_signal, fen):
         super().__init__()
-        self.oppo = "w" if self.side == "b" else "b"
-        self.player_signal = player_signal
-        self.player_signal.connect(self.activate)
-        self.fen = fen
-        self.chess_dict = Chess.gen_chess_dict()
-        self.chess = Chess.convert(self.fen, self.chess_dict)
-
-
-    def activate(self):
-        move, self.chess = engine(self.chess, self.chess_dict)
-        self.signal.emit(move)
+        self.cl = ChessLib()
+        self.move_history = {}
+        self.game_signal = game_signal
+        chess = self.cl.convert(fen)
+        status = self.cl.is_game_unplayable(chess)
+        self.game = {
+            "event": "game",
+            "move": "",
+            "chess": chess,
+            "status": status,
+        }
 
     def run(self):
+        self.signal.emit(json.dumps(self.game))
         while True:
-            sleep(1000)
+            self.game["move"], self.game["chess"] = engine(self.game["chess"])
+            self.signal.emit(json.dumps(self.game))
+            time.sleep(randint(1, 2) + random())
 
 
 class Hera(QMainWindow):
 
     # signals
     clock_signal = pyqtSignal(str)
-    white_player_signal = pyqtSignal(str)
-    black_player_signal = pyqtSignal(str)
+    game_signal = pyqtSignal(str)
 
     def __init__(self):
         super().__init__()
@@ -118,10 +118,10 @@ class Hera(QMainWindow):
         self.setAcceptDrops(True)
         self.board = QTableWidget(8, 8, self)
         self.manual = QTableWidget(1, 3, self)
-        self.black_player = Player("Miss Ace")
-        self.black_clock = Clock("04:35")
-        self.white_player = Player("Souna")
-        self.white_clock = Clock("07:22")
+        self.black_player = Player("Black")
+        self.black_clock = Clock("05:00")
+        self.white_player = Player("White")
+        self.white_clock = Clock("05:00")
         self.board.setParent(self)
         self.manual.setParent(self)
         self.black_player.setParent(self)
@@ -159,27 +159,9 @@ class Hera(QMainWindow):
         self.draw_info(80)
 
         # game
-        self.chess_dict = Chess.gen_chess_dict()
         self.chess = None
-        self.white_player_thread = None
-        self.black_player_thread = None
+        self.game_thread = None
         self.clock_thread = None
-
-    def display_clock(self, signal):
-        data = json.loads(signal)
-        if data["turn"] == "w":
-            self.white_clock.setPalette(self.timing_color)
-            self.black_clock.setPalette(self.stop_color)
-            w_clock = time.strftime("%M:%S", time.localtime(data["w"]))
-            self.white_clock.setText(w_clock)
-            data["turn"] = "b"
-        else:
-            self.black_clock.setPalette(self.timing_color)
-            self.white_clock.setPalette(self.stop_color)
-            b_clock = time.strftime("%M:%S", time.localtime(data["b"]))
-            self.black_clock.setText(b_clock)
-            data["turn"] = "w"
-        self.clock_signal.emit(json.dumps(data))
 
     def load_piece_image(self):
         # load the picture of each piece from disk
@@ -216,8 +198,12 @@ class Hera(QMainWindow):
         newGameMenu = gameMenu.addMenu("New Game")
 
         standardAct = QAction(QIcon(""), "standard", self)
-        standardAct.triggered.connect(lambda: self.start_new_game("standard"))
+        standardAct.triggered.connect(lambda: self.create_game("standard"))
         newGameMenu.addAction(standardAct)
+
+        fromFenAct = QAction(QIcon(""), "from FEN...", self)
+        fromFenAct.triggered.connect(lambda: self.create_game("from FEN..."))
+        newGameMenu.addAction(fromFenAct)
 
         fromPositionAct = QAction(QIcon(""), "from position", self)
         fromPositionAct.triggered.connect(lambda: self.new_game("from position"))
@@ -260,22 +246,20 @@ class Hera(QMainWindow):
         self.current_piece_style = style
         self.load_piece_image()
 
-
-    def start_new_game(self, mode):
+    def create_game(self, mode):
         if mode == "standard":
             fen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
-        self.chess = Chess.convert(fen, self.chess_dict)
-        self.white_player_thread = PlayerThread(
-            "w", 150, 0, self.white_player_signal, fen
-        )
-        self.white_player_signal.signal.connect(self.display_move)
-        self.black_player_thread = PlayerThread(
-            "b", 150, 0, self.black_player_signal, fen
-        )
-        self.black_player_thread.signal.connect(self.display_move)
-        self.clock_thread = ClockThread(150, 0, self.clock_signal)
-        self.clock_thread.signal.connect(self.display_clock)
-        self.clock_thread.start()
+            ok = True
+        elif mode == "from FEN...":
+            fen, ok = QInputDialog.getText(self, "FEN", "Input fen:")
+
+        if ok and fen:
+            self.game_thread = GameThread(self.game_signal, fen)
+            self.game_thread.signal.connect(self.display_game)
+            self.game_thread.start()
+            self.clock_thread = ClockThread(self.clock_signal, 150, 1)
+            self.clock_thread.signal.connect(self.display_game)
+            self.clock_thread.start()
 
     def keep_silent(self):
         if self.is_silent:
@@ -387,53 +371,60 @@ class Hera(QMainWindow):
         self.manual.setColumnWidth(1, basic_width)
         self.manual.setColumnWidth(2, basic_width)
 
-    def display_move(self, signal):
-
+    def display_game(self, signal):
         # refresh board after one certain move in games
-        game = json.loads(signal)
-        move, chess, status = game["move"], game["chess"], game["status"]
-        if chess["turn"] == "w":
-            self.white_player_signal.emit(move)
-        else:
-            self.black_player_signal.emit(move)
+        data = json.loads(signal)
+        if data["event"] == "game":
+            move, chess, status = data["move"], data["chess"], data["status"]
+            # refresh board
+            for rank in range(8):
+                for file in range(8):
+                    square = "abcdefgh"[file] + "87654321"[rank]
+                    if square not in chess["blank"]:
+                        # put piece at a square if it is not blank
+                        symbol = chess["pieces"][square]
+                        piece = Piece(self.piece_image[symbol], self.piece_size)
+                    else:
+                        piece = Piece(None, self.piece_size)
 
-        if status:
-            QMessageBox.information(self, "Error", status)
-            return False
+                    self.board.setCellWidget(rank, file, piece)
 
-        # refresh board
-        for rank in range(8):
-            for file in range(8):
-                square = "abcdefgh"[file] + "87654321"[rank]
-                if square not in chess["blank"]:
-                    # put piece at a square if it is not blank
-                    symbol = chess["pieces"][square]
-                    piece = Piece(self.piece_image[symbol], self.piece_size)
+            if not self.is_silent:
+                self.move_sound.play()
+
+            if move:
+                self.clock_signal.emit(chess["turn"])
+                # refresh manual area
+                turn, full = chess["turn"], int(chess["full"])
+                current_row = self.manual.rowCount()
+
+                if turn == "b":
+                    # append a new chess row
+                    self.manual.insertRow(current_row)
+                    current_row = self.manual.rowCount()
+                    for j in range(3):
+                        self.manual.setItem(current_row - 1, j, QTableWidgetItem())
+
+                    # append move
+                    self.manual.item(current_row - 1, 0).setText(str(full))
+                    self.manual.item(current_row - 1, 1).setText(move)
                 else:
-                    piece = Piece(None, self.piece_size)
+                    # append move
+                    self.manual.item(current_row - 1, 2).setText(move)
 
-                self.board.setCellWidget(rank, file, piece)
-
-        # refresh manual area
-        turn, full = chess["turn"], int(chess["full"])
-        current_row = self.manual.rowCount()
-
-        if turn == "b":
-            # append a new chess row
-            self.manual.insertRow(current_row)
-            current_row = self.manual.rowCount()
-            for j in range(3):
-                self.manual.setItem(current_row - 1, j, QTableWidgetItem())
-
-            # append move
-            self.manual.item(current_row - 1, 0).setText(str(full))
-            self.manual.item(current_row - 1, 1).setText(move)
+            if status:
+                QMessageBox.information(self, "Info", status)
         else:
-            # append move
-            self.manual.item(current_row - 1, 2).setText(move)
+            w_clock, b_clock, turn = data["w"], data["b"], data["turn"]
+            self.white_clock.setText(time.strftime("%M:%S", time.localtime(w_clock)))
+            self.black_clock.setText(time.strftime("%M:%S", time.localtime(b_clock)))
 
-        if not self.is_silent:
-            self.move_sound.play()
+            if data["turn"] == "w":
+                self.white_clock.setPalette(self.timing_color)
+                self.black_clock.setPalette(self.stop_color)
+            elif data["turn"] == "b":
+                self.black_clock.setPalette(self.timing_color)
+                self.white_clock.setPalette(self.stop_color)
 
     def resizeEvent(self, *args, **kwargs):
         window_width = self.geometry().width()
