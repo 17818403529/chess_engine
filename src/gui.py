@@ -18,11 +18,11 @@ pygame.mixer.init()
 
 
 class GameOver(QWidget):
-    def __init__(self, score, result):
+    def __init__(self, score, game_over):
         super().__init__()
-        result = QLabel(result)
-        result.setAlignment(Qt.AlignCenter)
-        result.setFont(QFont("Roman times", 18, QFont.Bold))
+        game_over = QLabel(game_over)
+        game_over.setAlignment(Qt.AlignCenter)
+        game_over.setFont(QFont("Roman times", 18, QFont.Bold))
         score = QLabel(score)
         score.setAlignment(Qt.AlignCenter)
         score.setFont(QFont("Roman times", 18, QFont.Bold))
@@ -30,7 +30,7 @@ class GameOver(QWidget):
         button.clicked.connect(self.close)
         button.setFont(QFont("Roman times", 18, QFont.Bold))
         layout = QVBoxLayout()
-        layout.addWidget(result)
+        layout.addWidget(game_over)
         layout.addWidget(score)
         layout.addWidget(button)
         self.setLayout(layout)
@@ -38,15 +38,15 @@ class GameOver(QWidget):
 
 
 class Player(QLabel):
-    def __init__(self, symbol):
-        super().__init__(symbol)
-        self.setFont(QFont(config["player_font"], 18, QFont.Bold))
+    def __init__(self, symbol, window):
+        super().__init__(symbol, window)
+        self.setFont(QFont(config["player_font"], 18))
 
 
 class Clock(QLabel):
-    def __init__(self):
-        super().__init__("5:00")
-        self.setFont(QFont(config["clock_font"], 28, QFont.Bold))
+    def __init__(self, window):
+        super().__init__("5:00", window)
+        self.setFont(QFont(config["clock_font"], 28))
         self.setAutoFillBackground(True)
         self.setAlignment(Qt.AlignCenter)
         self.timing_color = QPalette()
@@ -84,6 +84,51 @@ class Piece(QLabel):
 
             drag.setMimeData(mimeData)
             drag.exec_(Qt.MoveAction)
+
+
+class Manual(QTableWidget):
+    def __init__(self, window):
+        super().__init__(window)
+        self.window = window
+        self.setColumnCount(3)
+        self.setFrameShape(QFrame.NoFrame)
+        self.setShowGrid(False)
+        self.horizontalHeader().setVisible(False)
+        self.verticalHeader().setVisible(False)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.light = self.window.convert_color(config["window_color"])
+        self.bold = self.window.convert_color(config["manual_bold_color"])
+
+    def reset(self):
+        self.setRowCount(0)
+
+    def append_row(self):
+        # insert new row
+        self.setRowCount(self.rowCount() + 1)
+        for j in range(3):
+            newItme = QTableWidgetItem()
+
+            # set font
+            font = QFont(
+                config["manual_font"],
+                int(config["manual_font_size"] * self.window.zoom_ratio),
+            )
+            newItme.setFont(font)
+
+            # set background color
+            self.setItem(self.rowCount() - 1, j, newItme)
+            if self.rowCount() % 2 == 1:
+                self.item(self.rowCount() - 1, j).setBackground(self.light)
+            else:
+                self.item(self.rowCount() - 1, j).setBackground(self.bold)
+
+    def append_move(self, move, turn, full):
+        if turn == "b":
+            self.append_row()
+            self.item(self.rowCount() - 1, 0).setText(str(full))
+            self.item(self.rowCount() - 1, 1).setText(move)
+        else:
+            self.item(self.rowCount() - 1, 2).setText(move)
 
 
 class ClockThread(QThread):
@@ -147,7 +192,8 @@ class GameThread(QThread):
             if status:
                 # game over
                 break
-            time.sleep(randint(1, 3) + random())
+            # time.sleep(randint(1, 3) + random())
+            time.sleep(random())
 
 
 class Hera(QMainWindow):
@@ -158,29 +204,55 @@ class Hera(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        # basic appearance setup
+        self.init_ui()
+
+    def init_ui(self):
+
+        # add widgets
+        self.board = QTableWidget(8, 8, self)
+        self.manual = Manual(self)
+        self.black_player = Player("StockFish 8", self)
+        self.white_player = Player("Spike 1.4", self)
+        self.black_clock = Clock(self)
+        self.white_clock = Clock(self)
+
+        # widget appearance
         self.setWindowTitle("Hera")
         self.setAcceptDrops(True)
-        self.board = QTableWidget(8, 8, self)
-        self.manual = QTableWidget(1, 3, self)
-        self.black_player = Player("Black")
-        self.black_clock = Clock()
-        self.white_player = Player("White")
-        self.white_clock = Clock()
-        self.board.setParent(self)
-        self.manual.setParent(self)
-        self.black_player.setParent(self)
-        self.black_clock.setParent(self)
-        self.white_player.setParent(self)
-        self.white_clock.setParent(self)
+        self.board.horizontalHeader().setVisible(False)
+        self.board.verticalHeader().setVisible(False)
+        self.board.setFrameShape(QFrame.NoFrame)
+        self.board.setShowGrid(False)
 
-        # load config
-        self.piece_image_dir = config["piece_image_dir"]
-        self.sound_dir = config["sound_dir"]
-        self.piece_styles = config["piece_styles"]
+        # setup Geometry
+        self.std_size = None
+        self.basic_size = None
+        self.zoom_ratio = None
+        self.spacing = {"top": 32, "shaft": 5}
+        self.cal_basic_size()
+        window_height, window_width = (
+            self.basic_size * 8 + self.spacing["top"] + self.spacing["shaft"] * 2,
+            self.basic_size * 14,
+        )
+        self.setGeometry(
+            self.basic_size * 4, self.basic_size * 2, window_width, window_height
+        )
+
+        # load Config and Resource Files
+        self.piece_size = None
+        self.is_silent = True
+        self.game_thread = None
+        self.clock_thread = None
+        self.game_over = None
         self.board_styles = config["board_styles"]
-        self.current_piece_style = config["current_piece_style"]
         self.current_board_style = config["board_styles"][config["current_board_style"]]
+        self.piece_image = {}
+        self.piece_styles = config["piece_styles"]
+        self.current_piece_style = config["current_piece_style"]
+        self.piece_image_dir = config["piece_image_dir"]
+        self.load_piece_image()
+        self.sound_dir = config["sound_dir"]
+        self.move_sound = pygame.mixer.Sound(self.sound_dir + "move.wav")
 
         # setup color
         self.window_color = QPalette()
@@ -198,47 +270,35 @@ class Hera(QMainWindow):
             self.convert_color(config["window_color"]),
         )
 
-        # system variables
-        self.piece_image = {}
-        self.piece_size = None
-        self.is_silent = True
-        self.game_thread = None
-
-        # game
+        # game and thread
         self.chess = None
         self.game_thread = None
         self.clock_thread = None
+        self.history = {}
 
-        # layout correlation
-        self.basic_size = None
-        self.spacing = {"top": 40, "shaft": 5}
-        self.cal_basic_size()
-        window_height, window_width = (
-            self.basic_size * 10 + self.spacing["top"] + self.spacing["shaft"] * 3,
-            self.basic_size * 14,
-        )
-        self.setGeometry(
-            self.basic_size * 4, self.basic_size * 2, window_width, window_height
-        )
-
-        # load resource file
-        self.load_piece_image()
-        self.move_sound = pygame.mixer.Sound(self.sound_dir + "move.wav")
-
-        # append components
+        # draw widgets
         self.draw_menu()
         self.draw_board()
-        self.draw_manual()
-        self.draw_clock()
+        self.draw_side()
 
     def convert_color(self, rgb):
         return QColor(rgb[0], rgb[1], rgb[2])
 
-    def cal_basic_size(self):
-        desktop = QApplication.desktop()
-        screenRect = desktop.screenGeometry()
-        self.basic_size = screenRect.width() // 25
-        self.std_size = screenRect.width() // 25
+    def cal_basic_size(self, is_initial=True):
+        if is_initial:
+            desktop = QApplication.desktop()
+            screenRect = desktop.screenGeometry()
+            width = screenRect.width()
+            self.basic_size = screenRect.width() // 25
+            self.std_size = screenRect.width() // 25
+        else:
+            width = self.geometry().width()
+            height = self.geometry().height()
+            self.basic_size = min(
+                (height - self.spacing["top"] - self.spacing["shaft"] * 2) // 8,
+                width // 14,
+            )
+        self.zoom_ratio = self.basic_size / self.std_size
         self.spacing["hori"] = self.basic_size // 3
 
     def load_piece_image(self):
@@ -277,11 +337,11 @@ class Hera(QMainWindow):
         newGameMenu = gameMenu.addMenu("New Game")
 
         standardAct = QAction(QIcon(""), "standard", self)
-        standardAct.triggered.connect(lambda: self.create_game("standard"))
+        standardAct.triggered.connect(lambda: self.menu_create_game("standard"))
         newGameMenu.addAction(standardAct)
 
         fromFenAct = QAction(QIcon(""), "from FEN...", self)
-        fromFenAct.triggered.connect(lambda: self.create_game("from FEN..."))
+        fromFenAct.triggered.connect(lambda: self.menu_create_game("from FEN..."))
         newGameMenu.addAction(fromFenAct)
 
         fromPositionAct = QAction(QIcon(""), "from position", self)
@@ -297,7 +357,7 @@ class Hera(QMainWindow):
         for style in self.board_styles.keys():
             styleAct = QAction(QIcon(""), style, self)
             styleAct.triggered.connect(
-                lambda: self.alter_current_board_style(self.sender().text())
+                lambda: self.menu_alter_current_board_style(self.sender().text())
             )
             boardStyleMenu.addAction(styleAct)
 
@@ -307,7 +367,7 @@ class Hera(QMainWindow):
         for style in self.piece_styles.keys():
             styleAct = QAction(QIcon(""), style, self)
             styleAct.triggered.connect(
-                lambda: self.alter_current_piece_style(self.sender().text())
+                lambda: self.menu_alter_current_piece_style(self.sender().text())
             )
             pieceStyleMenu.addAction(styleAct)
 
@@ -318,7 +378,7 @@ class Hera(QMainWindow):
         soundMenu.addAction(adjustVolumeAct)
 
         keepSilentAct = QAction(QIcon(""), "Keep Silent", self)
-        keepSilentAct.triggered.connect(self.keep_silent)
+        keepSilentAct.triggered.connect(self.menu_keep_silent)
         soundMenu.addAction(keepSilentAct)
 
         # the "Help Menu"
@@ -331,11 +391,11 @@ class Hera(QMainWindow):
         aboutAct = QAction(QIcon(""), "About", self)
         helpMenu.addAction(aboutAct)
 
-    def alter_current_piece_style(self, style):
+    def menu_alter_current_piece_style(self, style):
         self.current_piece_style = style
         self.load_piece_image()
 
-    def alter_current_board_style(self, style):
+    def menu_alter_current_board_style(self, style):
         self.current_board_style = self.board_styles[style]
         self.black_clock.set_color(
             self.convert_color(self.current_board_style["clock"]),
@@ -348,8 +408,8 @@ class Hera(QMainWindow):
 
         self.draw_board()
 
-    def create_game(self, mode):
-        self.manual.clearContents()
+    def menu_create_game(self, mode):
+        self.manual.reset()
         if mode == "standard":
             fen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
             ok = True
@@ -368,64 +428,77 @@ class Hera(QMainWindow):
             self.clock_thread.signal.connect(self.display_game)
             self.clock_thread.start()
 
-    def keep_silent(self):
+    def menu_keep_silent(self):
         if self.is_silent:
             self.is_silent = False
         else:
             self.is_silent = True
 
-    def draw_clock(self):
-        self.black_player.setGeometry(
-            self.spacing["hori"],
-            self.spacing["top"],
-            self.basic_size * 2,
-            self.basic_size,
-        )
-        self.black_clock.setGeometry(
-            self.spacing["hori"] + self.basic_size * 6,
-            self.spacing["top"],
-            self.basic_size * 2,
-            self.basic_size,
-        )
-        self.white_player.setGeometry(
-            self.spacing["hori"],
-            self.spacing["top"] + self.basic_size * 9 + self.spacing["shaft"] * 2,
-            self.basic_size * 2,
-            self.basic_size,
-        )
-        self.white_clock.setGeometry(
-            self.spacing["hori"] + self.basic_size * 6,
-            self.spacing["top"] + self.basic_size * 9 + self.spacing["shaft"] * 2,
-            self.basic_size * 2,
-            self.basic_size,
-        )
+    def draw_side(self):
 
         self.black_player.setFont(
             QFont(
-                config["player_font"], 18 * self.basic_size // self.std_size, QFont.Bold
+                config["player_font"], int(config["player_font_size"] * self.zoom_ratio)
             )
         )
         self.black_clock.setFont(
             QFont(
-                config["player_font"], 28 * self.basic_size // self.std_size, QFont.Bold
+                config["clock_font"], int(config["clock_font_size"] * self.zoom_ratio)
             )
         )
         self.white_player.setFont(
             QFont(
-                config["player_font"], 18 * self.basic_size // self.std_size, QFont.Bold
+                config["player_font"], int(config["player_font_size"] * self.zoom_ratio)
             )
         )
         self.white_clock.setFont(
             QFont(
-                config["player_font"], 28 * self.basic_size // self.std_size, QFont.Bold
+                config["clock_font"], int(config["clock_font_size"] * self.zoom_ratio)
             )
         )
+
+        self.black_clock.setGeometry(
+            self.spacing["hori"] * 2 + self.basic_size * 8,
+            self.spacing["top"],
+            self.basic_size * 2,
+            self.basic_size,
+        )
+        self.black_player.setGeometry(
+            self.spacing["hori"] * 2 + self.basic_size * 8,
+            self.spacing["top"] + self.basic_size,
+            self.basic_size * 2,
+            self.basic_size,
+        )
+
+        self.white_player.setGeometry(
+            self.spacing["hori"] * 2 + self.basic_size * 8,
+            self.spacing["top"] + self.basic_size * 6,
+            self.basic_size * 2,
+            self.basic_size,
+        )
+        self.white_clock.setGeometry(
+            self.spacing["hori"] * 2 + self.basic_size * 8,
+            self.spacing["top"] + self.basic_size * 7,
+            self.basic_size * 2,
+            self.basic_size,
+        )
+
+        self.manual.setGeometry(
+            self.spacing["hori"] * 2 + self.basic_size * 8,
+            self.spacing["top"] + self.basic_size * 2,
+            self.basic_size * 5,
+            self.basic_size * 4,
+        )
+
+        self.manual.setColumnWidth(0, self.basic_size)
+        self.manual.setColumnWidth(1, self.basic_size * 2)
+        self.manual.setColumnWidth(2, self.basic_size * 2)
 
     def draw_board(self):
 
         self.board.setGeometry(
             self.spacing["hori"],
-            self.spacing["top"] + self.basic_size + self.spacing["shaft"],
+            self.spacing["top"],
             self.basic_size * 8,
             self.basic_size * 8,
         )
@@ -434,11 +507,6 @@ class Hera(QMainWindow):
             # setup square size
             self.board.setRowHeight(i, self.basic_size)
             self.board.setColumnWidth(i, self.basic_size)
-
-        self.board.horizontalHeader().setVisible(False)
-        self.board.verticalHeader().setVisible(False)
-        self.board.setFrameShape(QFrame.NoFrame)
-        self.board.setShowGrid(False)
 
         # set square color
 
@@ -458,27 +526,6 @@ class Hera(QMainWindow):
                     self.board.item(file, rank).setBackground(light)
                 else:
                     self.board.item(file, rank).setBackground(bold)
-
-    def draw_manual(self):
-
-        self.manual.setGeometry(
-            self.basic_size * 8 + self.spacing["hori"] * 2,
-            self.spacing["top"],
-            self.basic_size * 7,
-            self.basic_size * 10,
-        )
-
-        # setup the base appearance and scaling behavior
-        self.manual.setFrameShape(QFrame.NoFrame)
-        self.manual.setShowGrid(False)
-        self.manual.horizontalHeader().setVisible(False)
-        self.manual.verticalHeader().setVisible(False)
-        self.manual.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-
-        # setup the column width
-        self.manual.setColumnWidth(0, self.basic_size)
-        self.manual.setColumnWidth(1, self.basic_size * 2)
-        self.manual.setColumnWidth(2, self.basic_size * 2)
 
     def display_game(self, signal):
         # refresh board after one certain move in games
@@ -505,26 +552,12 @@ class Hera(QMainWindow):
                 self.clock_signal.emit(chess["turn"])
                 # refresh manual area
                 turn, full = chess["turn"], int(chess["full"])
-                current_row = self.manual.rowCount()
-
-                if turn == "b":
-                    # append a new chess row
-                    self.manual.insertRow(current_row)
-                    current_row = self.manual.rowCount()
-                    for j in range(3):
-                        self.manual.setItem(current_row - 1, j, QTableWidgetItem())
-
-                    # append move
-                    self.manual.item(current_row - 1, 0).setText(str(full))
-                    self.manual.item(current_row - 1, 1).setText(move)
-                else:
-                    # append move
-                    self.manual.item(current_row - 1, 2).setText(move)
+                self.manual.append_move(move, turn, full)
 
             if status:
                 self.clock_signal.emit("-")
-                self.msg = GameOver(status)
-                self.msg.show()
+                self.game_over = GameOver(status)
+                self.game_over.show()
         else:
             w_clock, b_clock, turn = data["w"], data["b"], data["turn"]
             self.white_clock.display(w_clock)
@@ -538,18 +571,12 @@ class Hera(QMainWindow):
                 self.white_clock.stop()
 
     def resizeEvent(self, *args, **kwargs):
-        window_width = self.geometry().width()
-        window_height = self.geometry().height()
-        self.basic_size = min(
-            (window_height - self.spacing["top"] - self.spacing["shaft"] * 3) // 10,
-            window_width // 14,
+        self.cal_basic_size(is_initial=False)
+        self.piece_size = int(
+            self.piece_styles[self.current_piece_style][1] * self.zoom_ratio
         )
-        self.spacing["hori"] = self.basic_size // 3
-        self.piece_size = self.piece_styles[self.current_piece_style][1]
-        self.piece_size = self.piece_size * self.basic_size // self.std_size
         self.draw_board()
-        self.draw_manual()
-        self.draw_clock()
+        self.draw_side()
 
 
 if __name__ == "__main__":

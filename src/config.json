@@ -1,6 +1,15 @@
 {
-    "clock_font": "Yu Gothic Light",
-    "player_font": "仿宋",
+    "player_font": "Gadugi",
+    "player_font_size": 18,
+    "clock_font": "Segoe UI Semibold",
+    "clock_font_size": 28,
+    "manual_font": "Cascadia Code SemiBold",
+    "manual_font_size": 14,
+    "manual_bold_color": [
+        240,
+        240,
+        240
+    ],
     "window_color": [
         255,
         255,
