@@ -786,9 +786,9 @@ class ChessLib:
         placement.reverse()
         repeated = 0
         for i in placement:
-            if i == fen:
+            if i == placement[0]:
                 repeated += 1
-                if repeated == 3:
+                if repeated == 4:
                     status = "3rep draw"
 
         # insufficient force
@@ -840,7 +840,9 @@ def engine(chess):
     others = []
     move = ""
     for i in list(legal_moves.keys()):
-        if "x" in i:
+        if "#" in i:
+            return i, cb.take_a_move(chess, legal_moves[i])
+        elif "x" in i:
             capture.append(i)
         elif "+" in i:
             check.append(i)

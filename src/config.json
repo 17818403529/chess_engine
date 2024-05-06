@@ -1,18 +1,51 @@
 {
-    "board_style": {
-        "bold": [
-            250,
-            235,
-            215
-        ],
-        "light": [
-            143,188,139
-        ]
-    },
-    "square_size": 81,
+    "clock_font": "Yu Gothic Light",
+    "player_font": "仿宋",
+    "window_color": [
+        255,
+        255,
+        255
+    ],
     "current_piece_style": "sketching",
+    "current_board_style": "sketching",
     "piece_image_dir": "C:\\Users\\17818\\Music\\vchess\\resource\\images\\pieces\\",
     "sound_dir": "C:\\Users\\17818\\Music\\vchess\\resource\\sounds\\",
+    "board_styles": {
+        "green": {
+            "bold": [
+                250,
+                235,
+                215
+            ],
+            "light": [
+                143,
+                188,
+                139
+            ],
+            "clock": [
+                200,
+                247,
+                195
+            ]
+        },
+        "sketching": {
+            "bold": [
+                242,
+                244,
+                244
+            ],
+            "light": [
+                213,
+                219,
+                219
+            ],
+            "clock": [
+                242,
+                244,
+                244
+            ]
+        }
+    },
     "piece_styles": {
         "alpha": [
             "svg",
