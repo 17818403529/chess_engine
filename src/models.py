@@ -749,7 +749,8 @@ class ChessLib:
                     if empty:
                         fen += str(empty)
                         empty = 0
-                    fen += chess["pieces"][square]
+                        fen += chess["pieces"][square]
+
                 if file == "h":
                     if empty:
                         fen += str(empty)
@@ -769,17 +770,22 @@ class ChessLib:
 
     def judge(self, chess, move, move_history):
 
-        status = ""
+        status = []
 
         if "#" in move:
-            status = "checkmate"
+            turn = chess["turn"]
+            if turn == "w":
+                status = ["Checkmate, black wins.", "0 - 1"]
+            else:
+                status = ["Checkmate, white wins.", "1 - 0"]
+            return status
 
         unchecked_moves = self.gather_unchecked_moves(chess)
         if unchecked_moves == {}:
-            status = "stalemate"
+            status = ["Stalemate.", "1/2  -  1/2"]
 
         if chess["half"] == "100":
-            status = "50 moves draw"
+            status = ["Draw, 50 moves.", "1/2  -  1/2"]
 
         # rep3 draw
         placement = list(move_history.values())
@@ -789,16 +795,16 @@ class ChessLib:
             if i == placement[0]:
                 repeated += 1
                 if repeated == 4:
-                    status = "3rep draw"
+                    status = ["Draw, rep3.", "1/2  -  1/2"]
 
         # insufficient force
         if len(chess["blank"]) == 62:
-            status = "insufficient force"
+            status = ["Draw, understrength.", "1/2  -  1/2"]
 
         elif len(chess["blank"]) == 61:
             for i in chess["pieces"].values():
                 if i in "BbNn":
-                    status = "insufficient force"
+                    status = ["Draw, understrength.", "1/2  -  1/2"]
 
         return status
 
@@ -831,9 +837,10 @@ from random import random
 
 
 def engine(chess):
-    sleep(0.3)
+    # sleep(0.3)
     cb = ChessLib()
     legal_moves = cb.gather_legal_moves(chess)
+    castling = []
     capture = []
     check = []
     king = []
@@ -842,6 +849,8 @@ def engine(chess):
     for i in list(legal_moves.keys()):
         if "#" in i:
             return i, cb.take_a_move(chess, legal_moves[i])
+        elif i in ["O-O-O", "O-O"]:
+            castling.append(i)
         elif "x" in i:
             capture.append(i)
         elif "+" in i:
@@ -851,7 +860,9 @@ def engine(chess):
         else:
             others.append(i)
 
-    if capture:
+    if castling:
+        move = choice(castling)
+    elif capture:
         if random() > 0.3:
             move = choice(capture)
     elif check:

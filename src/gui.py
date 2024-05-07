@@ -18,23 +18,38 @@ pygame.mixer.init()
 
 
 class GameOver(QWidget):
-    def __init__(self, score, game_over):
+    def __init__(self):
         super().__init__()
-        game_over = QLabel(game_over)
-        game_over.setAlignment(Qt.AlignCenter)
-        game_over.setFont(QFont("Roman times", 18, QFont.Bold))
-        score = QLabel(score)
-        score.setAlignment(Qt.AlignCenter)
-        score.setFont(QFont("Roman times", 18, QFont.Bold))
-        button = QPushButton("OK")
-        button.clicked.connect(self.close)
-        button.setFont(QFont("Roman times", 18, QFont.Bold))
+        self.init_ui()
+
+    def init_ui(self):
+        self.setGeometry(300, 200, 350, 150)
         layout = QVBoxLayout()
-        layout.addWidget(game_over)
-        layout.addWidget(score)
-        layout.addWidget(button)
+        self.setWindowFlags(
+            Qt.WindowCloseButtonHint
+            | Qt.WindowMaximizeButtonHint
+            | Qt.MSWindowsFixedSizeDialogHint
+        )
+        self.setWindowTitle("GAME OVER")
+        self.result = QLabel("")
+        font = QFont("Sitka Small", 14)
+        font.setBold(True)
+        self.result.setFont(font)
+        self.result.setAlignment(Qt.AlignHCenter | Qt.AlignVCenter)
+        layout.addWidget(self.result)
+        self.score = QLabel("")
+        font = QFont("Gabriola", 28)
+        font.setItalic(True)
+        font.setBold(True)
+        self.score.setFont(font)
+        self.score.setAlignment(Qt.AlignHCenter | Qt.AlignVCenter)
+        layout.addWidget(self.score)
         self.setLayout(layout)
-        self.setWindowFlags(Qt.FramelessWindowHint)
+
+    def append_result(self, status):
+        self.result.setText(status[0])
+        self.score.setText(status[1])
+        self.show()
 
 
 class Player(QLabel):
@@ -105,6 +120,7 @@ class Manual(QTableWidget):
     def append_row(self):
         # insert new row
         self.setRowCount(self.rowCount() + 1)
+        self.setRowHeight(self.rowCount() - 1, int(self.window.basic_size * 0.6))
         for j in range(3):
             newItme = QTableWidgetItem()
 
@@ -129,6 +145,10 @@ class Manual(QTableWidget):
             self.item(self.rowCount() - 1, 1).setText(move)
         else:
             self.item(self.rowCount() - 1, 2).setText(move)
+
+    def append_result(self, status):
+        self.append_row()
+        self.item(self.rowCount() - 1, 1).setText(status[1])
 
 
 class ClockThread(QThread):
@@ -193,7 +213,7 @@ class GameThread(QThread):
                 # game over
                 break
             # time.sleep(randint(1, 3) + random())
-            time.sleep(random())
+            time.sleep(0.01)
 
 
 class Hera(QMainWindow):
@@ -215,6 +235,7 @@ class Hera(QMainWindow):
         self.white_player = Player("Spike 1.4", self)
         self.black_clock = Clock(self)
         self.white_clock = Clock(self)
+        self.game_over = GameOver()
 
         # widget appearance
         self.setWindowTitle("Hera")
@@ -243,7 +264,6 @@ class Hera(QMainWindow):
         self.is_silent = True
         self.game_thread = None
         self.clock_thread = None
-        self.game_over = None
         self.board_styles = config["board_styles"]
         self.current_board_style = config["board_styles"][config["current_board_style"]]
         self.piece_image = {}
@@ -556,8 +576,8 @@ class Hera(QMainWindow):
 
             if status:
                 self.clock_signal.emit("-")
-                self.game_over = GameOver(status)
-                self.game_over.show()
+                self.game_over.append_result(status)
+                self.manual.append_result(status)
         else:
             w_clock, b_clock, turn = data["w"], data["b"], data["turn"]
             self.white_clock.display(w_clock)
@@ -580,7 +600,10 @@ class Hera(QMainWindow):
 
 
 if __name__ == "__main__":
-    app = QApplication(sys.argv)
-    hera = Hera()
-    hera.show()
-    sys.exit(app.exec())
+    try:
+        app = QApplication(sys.argv)
+        hera = Hera()
+        hera.show()
+        sys.exit(app.exec())
+    except:
+        sleep(111)
