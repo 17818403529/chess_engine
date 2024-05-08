@@ -19,6 +19,7 @@
     "current_board_style": "sketching",
     "piece_image_dir": "C:\\Users\\17818\\Music\\vchess\\resource\\images\\pieces\\",
     "sound_dir": "C:\\Users\\17818\\Music\\vchess\\resource\\sounds\\",
+    "manual_bar_image_dir": "C:\\Users\\17818\\Music\\vchess\\resource\\images\\manual_bar\\",
     "board_styles": {
         "green": {
             "bold": [
