@@ -780,7 +780,7 @@ class Chess:
             chess["half"] = str(int(chess["half"]) + 1)
 
         # alter full
-        if player == "w":
+        if player == "b":
             chess["full"] = str(int(chess["full"]) + 1)
 
         return chess
@@ -986,7 +986,7 @@ from random import random
 
 
 def engine(chess):
-    sleep(0.1)
+    sleep(0.3)
     ch = Chess()
     legal_moves = ch.gather_legal_moves(chess)
     castling = []

@@ -4,7 +4,7 @@
     "clock_font": "Segoe UI Semibold",
     "clock_font_size": 28,
     "manual_font": "Cascadia Code SemiBold",
-    "manual_font_size": 14,
+    "manual_font_size": 11,
     "manual_bold_color": [
         240,
         240,
@@ -21,30 +21,13 @@
     "sound_dir": "C:\\Users\\17818\\Music\\vchess\\resource\\sounds\\",
     "manual_bar_image_dir": "C:\\Users\\17818\\Music\\vchess\\resource\\images\\manual_bar\\",
     "board_styles": {
-        "green": {
-            "bold": [
-                250,
-                235,
-                215
-            ],
-            "light": [
-                143,
-                188,
-                139
-            ],
-            "clock": [
-                200,
-                247,
-                195
-            ]
-        },
         "sketching": {
-            "bold": [
+            "white": [
                 242,
                 244,
                 244
             ],
-            "light": [
+            "black": [
                 213,
                 219,
                 219
@@ -53,6 +36,57 @@
                 242,
                 244,
                 244
+            ]
+        },
+        "blue": {
+            "white": [
+                222,
+                227,
+                230
+            ],
+            "black": [
+                140,
+                162,
+                173
+            ],
+            "clock": [
+                140,
+                162,
+                173
+            ]
+        },
+        "brown": {
+            "white": [
+                240,
+                217,
+                181
+            ],
+            "black": [
+                181,
+                136,
+                99
+            ],
+            "clock": [
+                240,
+                217,
+                181
+            ]
+        },
+        "green": {
+            "white": [
+                255,
+                255,
+                221
+            ],
+            "black": [
+                134,
+                166,
+                102
+            ],
+            "clock": [
+                255,
+                255,
+                221
             ]
         }
     },

@@ -108,9 +108,9 @@ class Piece(QLabel):
 
 
 class ManualBarButton(QPushButton):
-    def __init__(self, text):
-        super().__init__(text)
-        self.setStyleSheet("background-color: rgb(255,255,255); border:none;")
+    def __init__(self, text, widget):
+        super().__init__(text, widget)
+        self.setProperty("attrName", "ManualBarButton")
 
 
 class ManualBar(QWidget):
@@ -121,59 +121,73 @@ class ManualBar(QWidget):
 
     def initUI(self):
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-        layout = QHBoxLayout()
-        first = ManualBarButton("")
+
+        basic_size = self.window.basic_size
+        spacing = 0
+        shaft = 0
+        width = int(basic_size * 1.15)
+        height = int(basic_size * 0.5)
+
+        first = ManualBarButton("", self)
+        first.setGeometry(spacing, shaft, width, height)
         first.setIcon(
             QIcon(QPixmap(config["manual_bar_image_dir"] + "angle-double-left.svg"))
         )
-        layout.addWidget(first)
-        recoil = ManualBarButton("")
+
+        recoil = ManualBarButton("", self)
+        recoil.setGeometry(spacing + width, shaft, width, height)
         recoil.setIcon(
             QIcon(QPixmap(config["manual_bar_image_dir"] + "angle-left.svg"))
         )
-        layout.addWidget(recoil)
-        forward = ManualBarButton("")
+
+        forward = ManualBarButton("", self)
+        forward.setGeometry(spacing + width * 2, shaft, width, height)
         forward.setIcon(
             QIcon(QPixmap(config["manual_bar_image_dir"] + "angle-right.svg"))
         )
-        layout.addWidget(forward)
-        last = ManualBarButton("")
+
+        last = ManualBarButton("", self)
+        last.setGeometry(spacing + width * 3, shaft, width, height)
         last.setIcon(
             QIcon(QPixmap(config["manual_bar_image_dir"] + "angle-double-right.svg"))
         )
-        layout.addWidget(last)
-        self.setLayout(layout)
+
         first.clicked.connect(self.click_first)
         recoil.clicked.connect(self.click_recoil)
         forward.clicked.connect(self.click_forward)
         last.clicked.connect(self.click_last)
 
     def click_first(self):
-        self.window.is_manual_bar_activated = True
-        self.window.move_to_display = 0
-        chess = self.window.move_history[self.window.move_to_display][1]
-        self.window.display_game(chess)
+        if self.window.game_thread:
+            self.window.is_manual_bar_activated = True
+            self.window.move_to_display = 0
+            chess = self.window.move_history[self.window.move_to_display][1]
+            self.window.display_game(chess)
 
     def click_recoil(self):
-        self.window.is_manual_bar_activated = True
-        self.window.move_to_display -= 1
-        chess = self.window.move_history[self.window.move_to_display][1]
-        self.window.display_game(chess)
+        if self.window.game_thread:
+            self.window.is_manual_bar_activated = True
+            self.window.move_to_display -= 1
+            chess = self.window.move_history[self.window.move_to_display][1]
+            self.window.display_game(chess)
 
     def click_forward(self):
-        self.window.is_manual_bar_activated = True
-        self.window.move_to_display += 1
-        chess = self.window.move_history[self.window.move_to_display][1]
-        self.window.display_game(chess)
+        if self.window.game_thread:
+            self.window.is_manual_bar_activated = True
+            self.window.move_to_display += 1
+            chess = self.window.move_history[self.window.move_to_display][1]
+            self.window.display_game(chess)
 
     def click_last(self):
-        self.window.is_manual_bar_activated = False
+        if self.window.game_thread:
+            self.window.is_manual_bar_activated = False
 
 
 class Manual(QTableWidget):
     def __init__(self, window):
         super().__init__(window)
         self.window = window
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)  
         self.setColumnCount(3)
         self.setFrameStyle(QFrame.Shape.NoFrame)
         self.setShowGrid(False)
@@ -207,13 +221,21 @@ class Manual(QTableWidget):
             else:
                 self.item(self.rowCount() - 1, j).setBackground(self.bold)
 
+            if not self.window.is_manual_bar_activated:
+                self.scrollToBottom()
+
     def append_move(self, move, turn, full):
         if turn == "b":
             self.append_row()
             self.item(self.rowCount() - 1, 0).setText(str(full))
             self.item(self.rowCount() - 1, 1).setText(move)
         else:
-            self.item(self.rowCount() - 1, 2).setText(move)
+            try:
+                self.item(self.rowCount() - 1, 2).setText(move)
+            except AttributeError:
+                self.append_row()
+                self.item(self.rowCount() - 1, 0).setText(str(full - 1))
+                self.item(self.rowCount() - 1, 2).setText(move)
 
     def append_result(self, status):
         self.append_row()
@@ -297,6 +319,20 @@ class Hera(QMainWindow):
 
     def initUI(self):
 
+        # setup Geometry
+        self.std_size = None
+        self.basic_size = None
+        self.zoom_ratio = None
+        self.spacing = {"top": 32, "shaft": 5}
+        self.cal_basic_size()
+        window_height, window_width = (
+            self.basic_size * 8 + self.spacing["top"] + self.spacing["shaft"] * 2,
+            self.basic_size * 14,
+        )
+        self.setGeometry(
+            self.basic_size * 4, self.basic_size * 2, window_width, window_height
+        )
+
         # add widgets
         self.board = QTableWidget(8, 8, self)
         self.black_player = Player("StockFish 8", self)
@@ -314,20 +350,6 @@ class Hera(QMainWindow):
         self.board.verticalHeader().setVisible(False)
         self.board.setFrameShape(QFrame.Shape.NoFrame)
         self.board.setShowGrid(False)
-
-        # setup Geometry
-        self.std_size = None
-        self.basic_size = None
-        self.zoom_ratio = None
-        self.spacing = {"top": 32, "shaft": 5}
-        self.cal_basic_size()
-        window_height, window_width = (
-            self.basic_size * 8 + self.spacing["top"] + self.spacing["shaft"] * 2,
-            self.basic_size * 14,
-        )
-        self.setGeometry(
-            self.basic_size * 4, self.basic_size * 2, window_width, window_height
-        )
 
         # load Config and Resource Files
         self.piece_size = None
@@ -366,7 +388,7 @@ class Hera(QMainWindow):
         self.clock_thread = None
         self.move_history = []
         self.is_manual_bar_activated = False
-        self.move_to_display = None
+        self.move_to_display = 0
 
         # draw widgets
         self.draw_menu()
@@ -578,18 +600,18 @@ class Hera(QMainWindow):
             self.spacing["hori"] * 2 + self.basic_size * 8,
             self.spacing["top"] + self.basic_size * 2,
             self.basic_size * 5,
-            self.basic_size * 3,
+            int(self.basic_size * 3.3),
         )
 
-        self.manual.setColumnWidth(0, self.basic_size)
-        self.manual.setColumnWidth(1, self.basic_size * 2)
-        self.manual.setColumnWidth(2, self.basic_size * 2)
+        self.manual.setColumnWidth(0, self.basic_size - 5)
+        self.manual.setColumnWidth(1, self.basic_size * 2 - 10)
+        self.manual.setColumnWidth(2, self.basic_size * 2 - 10)
 
         self.manual_bar.setGeometry(
             self.spacing["hori"] * 2 + self.basic_size * 8,
-            self.spacing["top"] + self.basic_size * 5,
+            self.spacing["top"] + int(self.basic_size * 5.5),
             self.basic_size * 5,
-            self.basic_size,
+            int(self.basic_size * 0.5),
         )
 
     def draw_board(self):
@@ -608,8 +630,8 @@ class Hera(QMainWindow):
 
         # set square color
 
-        light = self.convert_color(self.current_board_style["light"])
-        bold = self.convert_color(self.current_board_style["bold"])
+        white = self.convert_color(self.current_board_style["white"])
+        black = self.convert_color(self.current_board_style["black"])
 
         for file in range(8):
             for rank in range(8):
@@ -620,10 +642,10 @@ class Hera(QMainWindow):
                 )
 
                 # fill different colors for different squares
-                if (rank + file) % 2 == 1:
-                    self.board.item(file, rank).setBackground(light)
+                if (rank + file) % 2 == 0:
+                    self.board.item(file, rank).setBackground(white)
                 else:
-                    self.board.item(file, rank).setBackground(bold)
+                    self.board.item(file, rank).setBackground(black)
 
     def display_game(self, chess):
         for rank in range(8):
@@ -685,6 +707,10 @@ class Hera(QMainWindow):
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
+    with open(
+        "C:\\Users\\17818\\Music\\vchess\\src\\hera.qss", "r", encoding="utf-8"
+    ) as f:
+        app.setStyleSheet(f.read())
     hera = Hera()
     hera.show()
     sys.exit(app.exec())
