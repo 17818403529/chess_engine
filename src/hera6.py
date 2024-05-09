@@ -88,11 +88,13 @@ class Clock(QLabel):
 
 
 class Piece(QLabel):
-    def __init__(self, iamge, size):
+    def __init__(self, iamge):
         super().__init__("")
+        self.setProperty("attrName", "Piece")
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
         if iamge:
-            self.setPixmap(iamge.scaled(size, size))
+            self.setPixmap(iamge)
+            self.setScaledContents(True)
 
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:
@@ -107,94 +109,52 @@ class Piece(QLabel):
             drag.exec_(Qt.MoveAction)
 
 
-class ManualBarButton(QPushButton):
-    def __init__(self, text, widget):
-        super().__init__(text, widget)
-        self.setProperty("attrName", "ManualBarButton")
-
-
-class ManualBar(QWidget):
+class ManualBar(QTableWidget):
     def __init__(self, window):
-        super().__init__(window)
+        super().__init__(1, 5, window)
         self.window = window
         self.initUI()
 
     def initUI(self):
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.horizontalHeader().setVisible(False)
+        self.verticalHeader().setVisible(False)
+        self.setFrameStyle(QFrame.Shape.NoFrame)
+        self.setShowGrid(False)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
-        basic_size = self.window.basic_size
-        spacing = 0
-        shaft = 0
-        width = int(basic_size * 1.15)
-        height = int(basic_size * 0.5)
+        color = config["manual_bold_color"]
+        for col in range(5):
+            self.setItem(0, col, QTableWidgetItem())
+            self.setColumnWidth(col, self.window.basic_size)
+            self.item(0, col).setBackground(QColor(color[0], color[1], color[2]))
 
-        first = ManualBarButton("", self)
-        first.setGeometry(spacing, shaft, width, height)
-        first.setIcon(
-            QIcon(QPixmap(config["manual_bar_image_dir"] + "angle-double-left.svg"))
-        )
+        hori_margin = int(self.window.basic_size * 0.38)
+        vert_margin = int(self.window.basic_size * 0.11)
 
-        recoil = ManualBarButton("", self)
-        recoil.setGeometry(spacing + width, shaft, width, height)
-        recoil.setIcon(
-            QIcon(QPixmap(config["manual_bar_image_dir"] + "angle-left.svg"))
-        )
-
-        forward = ManualBarButton("", self)
-        forward.setGeometry(spacing + width * 2, shaft, width, height)
-        forward.setIcon(
-            QIcon(QPixmap(config["manual_bar_image_dir"] + "angle-right.svg"))
-        )
-
-        last = ManualBarButton("", self)
-        last.setGeometry(spacing + width * 3, shaft, width, height)
-        last.setIcon(
-            QIcon(QPixmap(config["manual_bar_image_dir"] + "angle-double-right.svg"))
-        )
-
-        first.clicked.connect(self.click_first)
-        recoil.clicked.connect(self.click_recoil)
-        forward.clicked.connect(self.click_forward)
-        last.clicked.connect(self.click_last)
-
-    def click_first(self):
-        if self.window.game_thread:
-            self.window.is_manual_bar_activated = True
-            self.window.move_to_display = 0
-            chess = self.window.move_history[self.window.move_to_display][1]
-            self.window.display_game(chess)
-
-    def click_recoil(self):
-        if self.window.game_thread:
-            self.window.is_manual_bar_activated = True
-            self.window.move_to_display -= 1
-            chess = self.window.move_history[self.window.move_to_display][1]
-            self.window.display_game(chess)
-
-    def click_forward(self):
-        if self.window.game_thread:
-            self.window.is_manual_bar_activated = True
-            self.window.move_to_display += 1
-            chess = self.window.move_history[self.window.move_to_display][1]
-            self.window.display_game(chess)
-
-    def click_last(self):
-        if self.window.game_thread:
-            self.window.is_manual_bar_activated = False
+        for i in range(4):
+            angle = ["double-left", "left", "right", "double-right"][i]
+            label = QLabel("", self)
+            iamge = QPixmap(config["manual_bar_image_dir"] + angle + ".svg")
+            label.setPixmap(iamge)
+            label.setScaledContents(True)
+            label.setContentsMargins(hori_margin, vert_margin, hori_margin, vert_margin)
+            self.setCellWidget(0, i + 1, label)
 
 
 class Manual(QTableWidget):
     def __init__(self, window):
         super().__init__(window)
         self.window = window
-        self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)  
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.horizontalHeader().setVisible(False)
+        self.verticalHeader().setVisible(False)
         self.setColumnCount(3)
         self.setFrameStyle(QFrame.Shape.NoFrame)
         self.setShowGrid(False)
-        self.horizontalHeader().setVisible(False)
-        self.verticalHeader().setVisible(False)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-        self.light = self.window.convert_color(config["window_color"])
         self.bold = self.window.convert_color(config["manual_bold_color"])
 
     def reset(self):
@@ -203,7 +163,7 @@ class Manual(QTableWidget):
     def append_row(self):
         # insert new row
         self.setRowCount(self.rowCount() + 1)
-        self.setRowHeight(self.rowCount() - 1, int(self.window.basic_size * 0.6))
+        self.setRowHeight(self.rowCount() - 1, int(self.window.basic_size * 0.45))
         for j in range(3):
             newItme = QTableWidgetItem()
 
@@ -216,11 +176,6 @@ class Manual(QTableWidget):
 
             # set background color
             self.setItem(self.rowCount() - 1, j, newItme)
-            if self.rowCount() % 2 == 1:
-                self.item(self.rowCount() - 1, j).setBackground(self.light)
-            else:
-                self.item(self.rowCount() - 1, j).setBackground(self.bold)
-
             if not self.window.is_manual_bar_activated:
                 self.scrollToBottom()
 
@@ -228,13 +183,21 @@ class Manual(QTableWidget):
         if turn == "b":
             self.append_row()
             self.item(self.rowCount() - 1, 0).setText(str(full))
+            self.item(self.rowCount() - 1, 0).setBackground(self.bold)
+            self.item(self.rowCount() - 1, 0).setTextAlignment(
+                Qt.AlignmentFlag.AlignCenter
+            )
             self.item(self.rowCount() - 1, 1).setText(move)
         else:
             try:
                 self.item(self.rowCount() - 1, 2).setText(move)
             except AttributeError:
                 self.append_row()
-                self.item(self.rowCount() - 1, 0).setText(str(full - 1))
+                self.item(self.rowCount() - 1, 0).setText(str(full))
+                self.item(self.rowCount() - 1, 0).setBackground(self.bold)
+                self.item(self.rowCount() - 1, 0).setTextAlignment(
+                    Qt.AlignmentFlag.AlignCenter
+                )
                 self.item(self.rowCount() - 1, 2).setText(move)
 
     def append_result(self, status):
@@ -417,8 +380,6 @@ class Hera(QMainWindow):
     def load_piece_image(self):
         # load the picture of each piece from disk
         suffix = self.piece_styles[self.current_piece_style][0]
-        self.piece_size = self.piece_styles[self.current_piece_style][1]
-        self.piece_size = int(self.piece_size * self.zoom_ratio)
 
         for symbol in "rnbqkp":
             img_path = self.piece_image_dir + "{}\\b{}.{}".format(
@@ -596,23 +557,23 @@ class Hera(QMainWindow):
             self.basic_size,
         )
 
-        self.manual.setGeometry(
-            self.spacing["hori"] * 2 + self.basic_size * 8,
-            self.spacing["top"] + self.basic_size * 2,
-            self.basic_size * 5,
-            int(self.basic_size * 3.3),
-        )
-
-        self.manual.setColumnWidth(0, self.basic_size - 5)
-        self.manual.setColumnWidth(1, self.basic_size * 2 - 10)
-        self.manual.setColumnWidth(2, self.basic_size * 2 - 10)
-
         self.manual_bar.setGeometry(
             self.spacing["hori"] * 2 + self.basic_size * 8,
-            self.spacing["top"] + int(self.basic_size * 5.5),
+            self.spacing["top"] + int(self.basic_size * 2),
             self.basic_size * 5,
             int(self.basic_size * 0.5),
         )
+
+        self.manual.setGeometry(
+            self.spacing["hori"] * 2 + self.basic_size * 8,
+            self.spacing["top"] + int(self.basic_size * 2.5),
+            self.basic_size * 5,
+            int(self.basic_size * 3.5),
+        )
+
+        self.manual.setColumnWidth(0, self.basic_size)
+        self.manual.setColumnWidth(1, self.basic_size * 2)
+        self.manual.setColumnWidth(2, self.basic_size * 2)
 
     def draw_board(self):
 
@@ -654,9 +615,9 @@ class Hera(QMainWindow):
                 if square not in chess["blank"]:
                     # put piece at a square if it is not blank
                     symbol = chess["pieces"][square]
-                    piece = Piece(self.piece_image[symbol], self.piece_size)
+                    piece = Piece(self.piece_image[symbol])
                 else:
-                    piece = Piece(None, self.piece_size)
+                    piece = Piece(None)
 
                 self.board.setCellWidget(rank, file, piece)
 

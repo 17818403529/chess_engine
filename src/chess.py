@@ -696,7 +696,7 @@ class Chess:
         del chess["pieces"][square]
         chess["pieces"][target] = symbol
 
-        if symbol in "Pp" and target==chess["passer"]:
+        if symbol in "Pp" and target == chess["passer"]:
             chess["blank"].remove(target)
         else:
             if not_taken:
@@ -738,7 +738,7 @@ class Chess:
 
             if player == "b":
                 symbol = symbol.lower()
-            
+
             self.move_action(chess, symbol, square, not_taken, target)
 
             if symbol in "Pp" and target == chess["passer"]:
@@ -1039,12 +1039,4 @@ if __name__ == "__main__":
     fen = "7k/8/8/3PpP2/8/8/8/2K5 w - e6 0 1"
     ch = Chess()
     chess = ch.convert(fen)
-    print(chess)
-    print(ch.take_a_move(chess, "Pd5xe6"))
-    # print(chess["pieces"])
-    # print(fen)
-    # print(ch.gen_fen(chess))
-    # print(ch.is_game_unplayable(chess))
-    # print(ch.gather_legal_moves(chess).keys())
-    # print(len(ch.gather_legal_moves(chess).keys()))
-    # vfunc(ch.gather_legal_moves, (chess,))
+    vfunc("speed", ch.convert, fen)

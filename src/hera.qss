@@ -1,8 +1,14 @@
 ManualBarButton {
-    background-color: rgb(255, 255, 255);
+    background-color: rgb(245, 245, 245);
     border: None;
+    padding:10% 5%;
+
+}
+
+Piece{
+    padding:5%;
 }
 
 ManualBarButton:hover {
-    background-color: rgb(245, 245, 245);
+    background-color: rgb(255, 255, 255);
 }

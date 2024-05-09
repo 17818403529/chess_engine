@@ -530,8 +530,8 @@ class Hera(QMainWindow):
 
         # set square color
 
-        light = self.convert_color(self.current_board_style["light"])
-        bold = self.convert_color(self.current_board_style["bold"])
+        light = self.convert_color(self.current_board_style["white"])
+        bold = self.convert_color(self.current_board_style["black"])
 
         for file in range(8):
             for rank in range(8):
