@@ -141,6 +141,9 @@ class Chess:
     def __init__(self):
         self.gen_rules_dict()
 
+    def convert_square(self, square):
+        return "abcdefgh".index(square[0]), "12345678".index(square[1])
+
     def gen_rules_dict(self):
 
         self.rules_dict = {}
@@ -150,6 +153,7 @@ class Chess:
         for file in "abcdefgh":
             for rank in "12345678":
                 squares.append(file + rank)
+        self.rules_dict["squares"] = squares
 
         unconfined = {}
         for i in "RNBQKPrnbqkp":
@@ -908,56 +912,52 @@ class Chess:
         )
         return fen
 
-    def is_game_unplayable(self, chess):
+    def is_game_over(self, chess, move, move_history):
 
-        if chess:
-            player = chess["turn"]
-            oppo = "b" if player == "w" else "w"
-            checking = self.is_checking(chess)
+        if not chess:
+            return {
+                "event": "game_over",
+                "result": "Illegal FEN.",
+                "score": "",
+            }
 
-            if len(chess["blank"]) == 62:
-                return "draw"
+        # insufficient force
+        if len(chess["blank"]) == 62:
+            return {
+                "event": "game_over",
+                "result": "Draw, understrength.",
+                "score": "1/2  -  1/2",
+            }
 
-            elif len(chess["blank"]) == 61:
-                for i in chess["pieces"].values():
-                    if i in "BbNn":
-                        return "draw"
-
-            if checking[player]:
-                return "illegal fen"
-            else:
-                if checking[oppo]:
-                    if not self.gather_legal_moves(chess):
-                        return "checkmate"
-                    else:
-                        return False
-                else:
-                    if not self.gather_legal_moves(chess):
-                        return "stalemate"
-                    else:
-                        return False
-
-        else:
-            return "illegal fen"
-
-    def judge(self, chess, move, move_history):
-
-        status = []
+        if len(chess["blank"]) == 61:
+            for i in chess["pieces"].values():
+                if i in "BbNn":
+                    return {
+                        "event": "game_over",
+                        "result": "Draw, understrength.",
+                        "score": "1/2  -  1/2",
+                    }
 
         if "#" in move:
-            turn = chess["turn"]
-            if turn == "w":
-                status = ["Checkmate, black wins.", "0 - 1"]
+            if chess["turn"] == "w":
+                return {
+                    "event": "game_over",
+                    "result": "Checkmate, black wins.",
+                    "score": "0 - 1",
+                }
             else:
-                status = ["Checkmate, white wins.", "1 - 0"]
-            return status
+                return {
+                    "event": "game_over",
+                    "result": "Checkmate, white wins.",
+                    "score": "1 - 0",
+                }
 
-        legal_moves = self.gather_legal_moves(chess)
-        if legal_moves == {}:
-            status = ["Stalemate.", "1/2  -  1/2"]
-
-        if chess["half"] == "100":
-            status = ["Draw, 50 moves.", "1/2  -  1/2"]
+        if chess["half"] == 100:
+            return {
+                "event": "game_over",
+                "result": "Draw, 50 moves.",
+                "score": "1/2  -  1/2",
+            }
 
         # rep3 draw
         placement = list(move_history.values())
@@ -967,26 +967,39 @@ class Chess:
             if i == placement[0]:
                 repeated += 1
                 if repeated == 4:
-                    status = ["Draw, rep3.", "1/2  -  1/2"]
+                    return {
+                        "event": "game_over",
+                        "result": "Draw, rep3.",
+                        "score": "1/2  -  1/2",
+                    }
 
-        # insufficient force
-        if len(chess["blank"]) == 62:
-            status = ["Draw, understrength.", "1/2  -  1/2"]
+        player = chess["turn"]
+        oppo = "b" if player == "w" else "w"
+        checking = self.is_checking(chess)
 
-        elif len(chess["blank"]) == 61:
-            for i in chess["pieces"].values():
-                if i in "BbNn":
-                    status = ["Draw, understrength.", "1/2  -  1/2"]
+        if checking[player]:
+            return {
+                "event": "game_over",
+                "result": "Illegal FEN.",
+                "score": "",
+            }
 
-        return status
+        if not checking[oppo] and self.gather_legal_moves(chess) == {}:
+            return {
+                "event": "game_over",
+                "result": "Stalemate.",
+                "score": "1/2  -  1/2",
+            }
+
+        return False
 
 
 from time import sleep
-from random import random
+from random import random, randint
 
 
 def engine(chess):
-    sleep(0.3)
+    sleep(randint(1, 2) + random())
     ch = Chess()
     legal_moves = ch.gather_legal_moves(chess)
     castling = []
