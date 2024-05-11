@@ -999,7 +999,7 @@ from random import random, randint
 
 
 def engine(chess):
-    sleep(randint(1, 2) + random())
+    sleep(random())
     ch = Chess()
     legal_moves = ch.gather_legal_moves(chess)
     castling = []
@@ -1043,7 +1043,7 @@ def engine(chess):
             return move, legal_moves[move]
 
     move = choice(list(legal_moves.keys()))
-    return move, legal_moves[i]
+    return move, legal_moves[move]
 
 
 if __name__ == "__main__":

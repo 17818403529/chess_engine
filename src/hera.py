@@ -10,10 +10,18 @@ from PyQt6.QtWidgets import *
 from PyQt6.QtGui import *
 from PyQt6.QtCore import *
 from PyQt6 import *
+import subprocess
 
-config_path = os.path.dirname(os.path.abspath(__file__)) + "\\config.json"
+current = os.path.dirname(os.path.abspath(__file__))
+root = os.path.abspath(os.path.join(current, "../"))
+config_path = os.path.join(root, "config.json")
 with open(config_path, "r", encoding="utf-8") as f:
     config = json.load(f)
+
+piece_image_dir = os.path.join(root, "resource", "images", "pieces")
+sound_dir = os.path.join(root, "resource", "sounds")
+manual_bar_image_dir = os.path.join(root, "resource", "images", "manual_bar")
+
 pygame.mixer.init()
 
 if sys.platform == "win32":
@@ -69,10 +77,57 @@ class GameOver(QWidget):
         self.show()
 
 
+class EngineManagement(QWidget):
+
+    def __init__(self, window):
+        super().__init__()
+        self.window = window
+        self.initUI()
+
+    def initUI(self):
+        self.setGeometry(300, 300, 360, 160)
+        self.setWindowTitle("Engine Management")
+
+        titleLabel = QLabel("Engine 1")
+        authorLabel = QLabel("Engine 2")
+
+        self.engine_1 = QComboBox()
+        for i in config["installed"].keys():
+            self.engine_1.addItem(i)
+        self.engine_1.setCurrentText(config["engine_1"])
+
+        self.engine_2 = QComboBox()
+        for i in config["installed"].keys():
+            self.engine_2.addItem(i)
+        self.engine_2.setCurrentText(config["engine_2"])
+
+        formLayout = QFormLayout()
+        formLayout.setSpacing(10)
+
+        button = QPushButton("OK")
+        button.clicked.connect(self.confirm)
+
+        formLayout.addRow(titleLabel, self.engine_1)
+        formLayout.addRow(authorLabel, self.engine_2)
+        formLayout.addRow(button)
+
+        self.setLayout(formLayout)
+
+    def confirm(self):
+        config["engine_1"] = self.engine_1.currentText()
+        config["engine_2"] = self.engine_2.currentText()
+        with open(config_path, "w") as f:
+            json.dump(config, f)
+        self.close()
+
+
 class Player(QLabel):
-    def __init__(self, symbol, window):
-        super().__init__(symbol, window)
+    def __init__(self, tag, window):
+        super().__init__(tag, window)
         self.setFont(QFont(config["player_font"], 18))
+
+    def reset(self, tag):
+        self.setText(tag)
 
 
 class Clock(QLabel):
@@ -95,6 +150,8 @@ class Clock(QLabel):
         self.setPalette(self.stop_color)
 
     def display(self, seconds):
+        if seconds < 0:
+            seconds = 0.0
         ts = time.strftime("%M:%S", time.localtime(seconds))
         if seconds >= 30:
             self.setText(ts)
@@ -111,6 +168,58 @@ class Piece(QLabel):
             self.setScaledContents(True)
         if style == "sketching":
             self.setStyleSheet("padding:7.5%")
+
+
+class Board(QTableWidget):
+    def __init__(self, window):
+        super().__init__(8, 8, window)
+        self.window = window
+        self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.horizontalHeader().setVisible(False)
+        self.verticalHeader().setVisible(False)
+        self.setFrameShape(QFrame.Shape.NoFrame)
+        self.setShowGrid(False)
+        self.initUI()
+
+    def initUI(self):
+        # set square color
+
+        white = convert_color(self.window.current_board_style["white"])
+        black = convert_color(self.window.current_board_style["black"])
+
+        for file in range(8):
+            for rank in range(8):
+                # create item and set font
+                self.setItem(file, rank, QTableWidgetItem())
+
+                # fill different colors for different squares
+                if (rank + file) % 2 == 0:
+                    self.item(file, rank).setBackground(white)
+                else:
+                    self.item(file, rank).setBackground(black)
+
+    def zoom(self):
+        for i in range(8):
+            # setup square size
+            self.setRowHeight(i, self.window.basic_size)
+            self.setColumnWidth(i, self.window.basic_size)
+
+    def display(self):
+        for square in self.window.ch.rules_dict["squares"]:
+            file, rank = self.window.ch.convert_square(square)
+            if square not in self.window.chess["blank"]:
+                # put piece at a square if it is not blank
+                symbol = self.window.chess["pieces"][square]
+                piece = Piece(
+                    self.window.piece_image[symbol], self.window.current_piece_style
+                )
+            else:
+                piece = Piece(None, "")
+
+            self.setCellWidget(7 - rank, file, piece)
+
+            if not self.window.is_silent:
+                self.window.move_sound.play()
 
 
 class ManualBar(QTableWidget):
@@ -139,7 +248,7 @@ class ManualBar(QTableWidget):
         for i in range(4):
             angle = ["double-left", "left", "right", "double-right"][i]
             label = QLabel("", self)
-            iamge = QPixmap(config["manual_bar_image_dir"] + angle + ".svg")
+            iamge = QPixmap(manual_bar_image_dir + angle + ".svg")
             label.setPixmap(iamge)
             label.setScaledContents(True)
             label.setContentsMargins(hori_margin, vert_margin, hori_margin, vert_margin)
@@ -158,10 +267,34 @@ class Manual(QTableWidget):
         self.setFrameStyle(QFrame.Shape.NoFrame)
         self.setShowGrid(False)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-        self.bold = convert_color(config["manual_bold_color"])
+        self.full_color = convert_color(config["manual_bold_color"])
 
     def reset(self):
         self.setRowCount(0)
+
+    def zoom(self):
+        self.setColumnWidth(0, self.window.basic_size)
+        self.setColumnWidth(1, self.window.basic_size * 2)
+        self.setColumnWidth(2, self.window.basic_size * 2)
+        for i in range(self.rowCount()):
+            self.item(i, 1).setFont(
+                QFont(
+                    config["move_font"],
+                    int(config["move_font_size"] * self.window.zoom_ratio),
+                )
+            )
+            self.item(i, 2).setFont(
+                QFont(
+                    config["move_font"],
+                    int(config["move_font_size"] * self.window.zoom_ratio),
+                )
+            )
+            self.item(i, 0).setFont(
+                QFont(
+                    config["full_font"],
+                    int(config["full_font_size"] * self.window.zoom_ratio),
+                )
+            )
 
     def append_row(self):
         # insert new row
@@ -172,8 +305,8 @@ class Manual(QTableWidget):
 
             # set font
             font = QFont(
-                config["manual_font"],
-                int(config["manual_font_size"] * self.window.zoom_ratio),
+                config["move_font"],
+                int(config["move_font_size"] * self.window.zoom_ratio),
             )
             newItme.setFont(font)
 
@@ -186,7 +319,7 @@ class Manual(QTableWidget):
         if turn == "b":
             self.append_row()
             self.item(self.rowCount() - 1, 0).setText(str(full))
-            self.item(self.rowCount() - 1, 0).setBackground(self.bold)
+            self.item(self.rowCount() - 1, 0).setBackground(self.full_color)
             self.item(self.rowCount() - 1, 0).setTextAlignment(
                 Qt.AlignmentFlag.AlignCenter
             )
@@ -197,7 +330,7 @@ class Manual(QTableWidget):
             except AttributeError:
                 self.append_row()
                 self.item(self.rowCount() - 1, 0).setText(str(full))
-                self.item(self.rowCount() - 1, 0).setBackground(self.bold)
+                self.item(self.rowCount() - 1, 0).setBackground(self.full_color)
                 self.item(self.rowCount() - 1, 0).setTextAlignment(
                     Qt.AlignmentFlag.AlignCenter
                 )
@@ -209,6 +342,7 @@ class Manual(QTableWidget):
 
 
 class ClockThread(QThread):
+
     signal = pyqtSignal(str)
 
     def __init__(self, clock):
@@ -261,6 +395,53 @@ class GameThread(QThread):
             "move": "",
             "chess": self.ch.convert(fen),
         }
+        self.load_engine()
+
+    def load_engine(self):
+
+        self.engine_1 = subprocess.Popen(
+            [config["installed"][config["engine_1"]]["cmd"]],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+
+        self.engine_1.stdin.write("uci\n")
+        self.engine_1.stdin.flush()
+        while True:
+            resp = self.engine_1.stdout.readline()
+            if resp == "uciok\n":
+                break
+
+        self.engine_1.stdin.write("isready\n")
+        self.engine_1.stdin.flush()
+        while True:
+            resp = self.engine_1.stdout.readline()
+            if resp == "readyok\n":
+                break
+
+        self.engine_2 = subprocess.Popen(
+            [config["installed"][config["engine_2"]]["cmd"]],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+
+        self.engine_2.stdin.write("uci\n")
+        self.engine_2.stdin.flush()
+        while True:
+            resp = self.engine_2.stdout.readline()
+            if resp == "uciok\n":
+                break
+
+        self.engine_2.stdin.write("isready\n")
+        self.engine_2.stdin.flush()
+        while True:
+            resp = self.engine_2.stdout.readline()
+            if resp == "readyok\n":
+                break
 
     def run(self):
 
@@ -310,23 +491,9 @@ class Hera(QMainWindow):
             self.basic_size * 4, self.basic_size * 2, window_width, window_height
         )
 
-        # add widgets
-        self.board = QTableWidget(8, 8, self)
-        self.black_player = Player("StockFish 8", self)
-        self.manual = Manual(self)
-        self.manual_bar = ManualBar(self)
-        self.black_clock = Clock(self)
-        self.white_player = Player("Spike 1.4", self)
-        self.white_clock = Clock(self)
-        self.game_over = GameOver(self)
-
         # widget appearance
         self.setWindowTitle("Hera")
         self.setAcceptDrops(True)
-        self.board.horizontalHeader().setVisible(False)
-        self.board.verticalHeader().setVisible(False)
-        self.board.setFrameShape(QFrame.Shape.NoFrame)
-        self.board.setShowGrid(False)
 
         # load Config and Resource Files
         self.piece_size = None
@@ -338,10 +505,19 @@ class Hera(QMainWindow):
         self.piece_image = {}
         self.piece_styles = config["piece_styles"]
         self.current_piece_style = config["current_piece_style"]
-        self.piece_image_dir = config["piece_image_dir"]
         self.load_piece_images()
-        self.sound_dir = config["sound_dir"]
-        self.move_sound = pygame.mixer.Sound(self.sound_dir + "move.wav")
+        self.move_sound = pygame.mixer.Sound(os.path.join(sound_dir, "move.wav"))
+
+        # add widgets
+        self.board = Board(self)
+        self.black_player = Player("StockFish 8", self)
+        self.manual = Manual(self)
+        self.manual_bar = ManualBar(self)
+        self.black_clock = Clock(self)
+        self.white_player = Player("Spike 1.4", self)
+        self.white_clock = Clock(self)
+        self.game_over = GameOver(self)
+        self.engine_management = EngineManagement(self)
 
         # setup color
         self.window_color = QPalette()
@@ -370,11 +546,9 @@ class Hera(QMainWindow):
         self.last_move_ts = None
         self.is_manual_bar_activated = False
         self.move_to_display = 0
-
         # draw widgets
         self.draw_menu()
-        self.draw_board()
-        self.draw_side()
+        self.draw()
 
     def cal_basic_size(self, is_initial=True):
         if is_initial:
@@ -396,14 +570,14 @@ class Hera(QMainWindow):
         # load the picture of each piece from disk
 
         for symbol in "rnbqkp":
-            img_path = self.piece_image_dir + "{}\\b{}.svg".format(
-                self.current_piece_style, symbol
+            img_path = os.path.join(
+                piece_image_dir, self.current_piece_style, "b{}.svg".format(symbol)
             )
             self.piece_image[symbol] = QPixmap(img_path)
 
         for symbol in "RNBQKP":
-            img_path = self.piece_image_dir + "{}\\w{}.svg".format(
-                self.current_piece_style, symbol
+            img_path = os.path.join(
+                piece_image_dir, self.current_piece_style, "w{}.svg".format(symbol)
             )
             self.piece_image[symbol] = QPixmap(img_path)
 
@@ -436,11 +610,17 @@ class Hera(QMainWindow):
         fromPositionAct.triggered.connect(lambda: self.new_game("from position"))
         newGameMenu.addAction(fromPositionAct)
 
-        # append "Config" menu
-        configMenu = menuBar.addMenu("Configs")
+        # append "Options" menu
+        OptionsMenu = menuBar.addMenu("Options")
+
+        # "Engine" submenu
+        engineMenu = OptionsMenu.addMenu("Engine")
+        manageAct = QAction(QIcon(""), "manage", self)
+        manageAct.triggered.connect(self.menu_manage_engine)
+        engineMenu.addAction(manageAct)
 
         # "board style" submenu
-        boardStyleMenu = configMenu.addMenu("Board Style")
+        boardStyleMenu = OptionsMenu.addMenu("Board Style")
 
         for style in self.board_styles.keys():
             styleAct = QAction(QIcon(""), style, self)
@@ -450,7 +630,7 @@ class Hera(QMainWindow):
             boardStyleMenu.addAction(styleAct)
 
         # "piece style" submenu
-        pieceStyleMenu = configMenu.addMenu("Pieces Style")
+        pieceStyleMenu = OptionsMenu.addMenu("Pieces Style")
 
         for style in self.piece_styles:
             styleAct = QAction(QIcon(""), style, self)
@@ -460,7 +640,7 @@ class Hera(QMainWindow):
             pieceStyleMenu.addAction(styleAct)
 
         # "sound" submenu
-        soundMenu = configMenu.addMenu("Sound")
+        soundMenu = OptionsMenu.addMenu("Sound")
 
         adjustVolumeAct = QAction(QIcon(""), "Adjust Volume", self)
         soundMenu.addAction(adjustVolumeAct)
@@ -479,10 +659,13 @@ class Hera(QMainWindow):
         aboutAct = QAction(QIcon(""), "About", self)
         helpMenu.addAction(aboutAct)
 
+    def menu_manage_engine(self):
+        self.engine_management.show()
+
     def menu_alter_current_piece_style(self, style):
         self.current_piece_style = style
         self.load_piece_images()
-        self.display_game()
+        self.board.display()
 
     def menu_alter_current_board_style(self, style):
         self.current_board_style = self.board_styles[style]
@@ -495,7 +678,7 @@ class Hera(QMainWindow):
             convert_color(config["window_color"]),
         )
 
-        self.draw_board()
+        self.board.initUI()
 
     def menu_create_game(self, mode):
         self.manual.reset()
@@ -516,8 +699,10 @@ class Hera(QMainWindow):
             self.game_thread = GameThread(self.game_signal, fen)
             self.game_thread.signal.connect(self.extract_packet)
             self.is_first_move_taken = False
-            self.clock = {"event": "clock", "w": 35, "b": 35, "step": 1, "turn": "w"}
+            self.clock = {"event": "clock", "w": 15, "b": 15, "step": 1, "turn": "w"}
             self.display_clock()
+            self.white_player.reset(config["installed"][config["engine_1"]]["tag"])
+            self.black_player.reset(config["installed"][config["engine_2"]]["tag"])
             self.game_thread.start()
 
     def menu_keep_silent(self):
@@ -526,7 +711,16 @@ class Hera(QMainWindow):
         else:
             self.is_silent = True
 
-    def draw_side(self):
+    def draw(self):
+
+        self.board.setGeometry(
+            self.spacing["hori"],
+            self.spacing["top"],
+            self.basic_size * 8,
+            self.basic_size * 8,
+        )
+
+        self.board.zoom()
 
         self.black_player.setFont(
             QFont(
@@ -558,14 +752,14 @@ class Hera(QMainWindow):
         self.black_player.setGeometry(
             self.spacing["hori"] * 2 + self.basic_size * 8,
             self.spacing["top"] + self.basic_size,
-            self.basic_size * 2,
+            self.basic_size * 5,
             self.basic_size,
         )
 
         self.white_player.setGeometry(
             self.spacing["hori"] * 2 + self.basic_size * 8,
             self.spacing["top"] + self.basic_size * 6,
-            self.basic_size * 2,
+            self.basic_size * 5,
             self.basic_size,
         )
         self.white_clock.setGeometry(
@@ -589,42 +783,7 @@ class Hera(QMainWindow):
             int(self.basic_size * 3.5),
         )
 
-        self.manual.setColumnWidth(0, self.basic_size)
-        self.manual.setColumnWidth(1, self.basic_size * 2)
-        self.manual.setColumnWidth(2, self.basic_size * 2)
-
-    def draw_board(self):
-
-        self.board.setGeometry(
-            self.spacing["hori"],
-            self.spacing["top"],
-            self.basic_size * 8,
-            self.basic_size * 8,
-        )
-
-        for i in range(8):
-            # setup square size
-            self.board.setRowHeight(i, self.basic_size)
-            self.board.setColumnWidth(i, self.basic_size)
-
-        # set square color
-
-        white = convert_color(self.current_board_style["white"])
-        black = convert_color(self.current_board_style["black"])
-
-        for file in range(8):
-            for rank in range(8):
-                # create item and set font
-                self.board.setItem(file, rank, QTableWidgetItem())
-                self.board.item(file, rank).setFont(
-                    QFont("consolas", self.basic_size // 7, QFont.Weight.Bold)
-                )
-
-                # fill different colors for different squares
-                if (rank + file) % 2 == 0:
-                    self.board.item(file, rank).setBackground(white)
-                else:
-                    self.board.item(file, rank).setBackground(black)
+        self.manual.zoom()
 
     def extract_packet(self, signal):
 
@@ -636,7 +795,7 @@ class Hera(QMainWindow):
             self.move_history.append([move, chess])
 
             if not self.is_manual_bar_activated:
-                self.display_game()
+                self.board.display()
                 self.move_to_display = len(self.move_history) - 1
 
             if move:
@@ -685,33 +844,13 @@ class Hera(QMainWindow):
             self.black_clock.timing()
             self.white_clock.stop()
 
-    def display_game(self):
-        for square in self.ch.rules_dict["squares"]:
-            file, rank = self.ch.convert_square(square)
-            if square not in self.chess["blank"]:
-                # put piece at a square if it is not blank
-                symbol = self.chess["pieces"][square]
-                piece = Piece(self.piece_image[symbol], self.current_piece_style)
-            else:
-                piece = Piece(None, "")
-
-            self.board.setCellWidget(rank, file, piece)
-
-            if not self.is_silent:
-                self.move_sound.play()
-
     def resizeEvent(self, *args, **kwargs):
         self.cal_basic_size(is_initial=False)
-        self.draw_board()
-        self.draw_side()
+        self.draw()
 
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
-    with open(
-        "C:\\Users\\17818\\Music\\hera\\src\\hera.qss", "r", encoding="utf-8"
-    ) as f:
-        app.setStyleSheet(f.read())
     hera = Hera()
     hera.show()
     sys.exit(app.exec())
