@@ -395,11 +395,12 @@ class GameThread(QThread):
             "move": "",
             "chess": self.ch.convert(fen),
         }
+        self.engine = {}
         self.load_engine()
 
     def load_engine(self):
 
-        self.engine_1 = subprocess.Popen(
+        engine_1 = subprocess.Popen(
             [config["installed"][config["engine_1"]]["cmd"]],
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
@@ -407,21 +408,21 @@ class GameThread(QThread):
             text=True,
         )
 
-        self.engine_1.stdin.write("uci\n")
-        self.engine_1.stdin.flush()
+        engine_1.stdin.write("uci\n")
+        engine_1.stdin.flush()
         while True:
-            resp = self.engine_1.stdout.readline()
+            resp = engine_1.stdout.readline()
             if resp == "uciok\n":
                 break
 
-        self.engine_1.stdin.write("isready\n")
-        self.engine_1.stdin.flush()
+        engine_1.stdin.write("isready\n")
+        engine_1.stdin.flush()
         while True:
-            resp = self.engine_1.stdout.readline()
+            resp = engine_1.stdout.readline()
             if resp == "readyok\n":
                 break
 
-        self.engine_2 = subprocess.Popen(
+        engine_2 = subprocess.Popen(
             [config["installed"][config["engine_2"]]["cmd"]],
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
@@ -429,19 +430,34 @@ class GameThread(QThread):
             text=True,
         )
 
-        self.engine_2.stdin.write("uci\n")
-        self.engine_2.stdin.flush()
+        engine_2.stdin.write("uci\n")
+        engine_2.stdin.flush()
         while True:
-            resp = self.engine_2.stdout.readline()
+            resp = engine_2.stdout.readline()
             if resp == "uciok\n":
                 break
 
-        self.engine_2.stdin.write("isready\n")
-        self.engine_2.stdin.flush()
+        engine_2.stdin.write("isready\n")
+        engine_2.stdin.flush()
         while True:
-            resp = self.engine_2.stdout.readline()
+            resp = engine_2.stdout.readline()
             if resp == "readyok\n":
                 break
+
+        self.engine["w"] = engine_1
+        self.engine["b"] = engine_2
+
+    def ask_engine_to_move(self, turn, fen):
+        self.engine[turn].stdin.write("position fen {}\n".format(fen))
+        self.engine[turn].stdin.flush()
+        xtime = "wtime" if turn == "w" else "btime"
+        self.engine[turn].stdin.write("go {} 10000\n".format(xtime))
+        self.engine[turn].stdin.flush()
+        while True:
+            resp = self.engine[turn].stdout.readline()
+            if resp[0:8] == "bestmove":
+                break
+        return resp.split()[1]
 
     def run(self):
 
@@ -454,7 +470,15 @@ class GameThread(QThread):
         else:
             while True:
                 # get into the game loop
-                move, chess = engine(self.packet["chess"])
+                legal_moves = self.ch.gather_legal_moves(self.packet["chess"])
+
+                move = self.ask_engine_to_move(
+                    self.packet["chess"]["turn"],
+                    self.ch.gen_fen(self.packet["chess"])
+                )
+
+                move = legal_moves["uci_map"][move]
+                chess = legal_moves["nodes"][move]
                 self.packet["move"] = move
                 self.packet["chess"] = chess
                 self.signal.emit(json.dumps(self.packet))

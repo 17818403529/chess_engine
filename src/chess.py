@@ -314,6 +314,12 @@ class Chess:
         }
         self.rules_dict["castle_rights"] = castle_rights
 
+        uci_castle_move = {
+            "w": {"O-O-O": "e1c1", "O-O": "e1g1"},
+            "b": {"O-O-O": "e8c8", "O-O": "e8g8"},
+        }
+        self.rules_dict["uci_castle_move"] = uci_castle_move
+
         castle_move = {
             "w": {
                 "symbol": "KR",
@@ -637,7 +643,7 @@ class Chess:
         return castlings
 
     def gather_unconfined(self, chess):
-        unconfined = []
+        unconfined = self.gather_castlings(chess)
         oppo = "w" if chess["turn"] == "b" else "b"
 
         for square in chess[chess["turn"]]:
@@ -717,19 +723,17 @@ class Chess:
         if move in ["O-O", "O-O-O"]:
             # king move
             symbol = self.rules_dict["castle_move"][player]["symbol"][0]
+            square, target = self.rules_dict["castle_move"][player][move]["king"]
             chess[symbol] = target
-            square, target = self.rules_dict["castle_move"][player][move]
-            self.move_action(chess, symbol, square, False, target)
+            self.move_action(chess, symbol, square, True, target)
+
+            # alter castling possibility
+            chess["castle"] = self.rules_dict["castle_rights"][symbol][chess["castle"]]
 
             # rock move
             symbol = self.rules_dict["castle_move"][player]["symbol"][1]
-            square, target = self.rules_dict["castle_move"][player][move]
-            self.move_action(chess, symbol, square, False, target)
-
-            # alter castling possibility
-            chess["castle"] = self.rules_dict["castle_move"][player]["poss"][
-                chess["castle"]
-            ]
+            square, target = self.rules_dict["castle_move"][player][move]["rock"]
+            self.move_action(chess, symbol, square, True, target)
 
         else:
             if "x" in move:
@@ -791,6 +795,7 @@ class Chess:
 
     def simplify_moves(self, chess, unconfined):
         simplified = {}
+        uci_map = {}
         repe = {}
 
         pieces = list(chess["pieces"].values())
@@ -808,14 +813,21 @@ class Chess:
             symbol = move[0] if chess["turn"] == "w" else move[0].lower()
             if move in ["O-O-O", "O-O"]:
                 simplified[move] = unconfined[move]
+                uci_map[self.convert_uci_moves(move, chess["turn"])] = move
             elif symbol in "Pp":
                 if move[3] != "x":
-                    simplified[move[3:]] = unconfined[move]
+                    _move = move[3:]
+                    simplified[_move] = unconfined[move]
+                    uci_map[self.convert_uci_moves(move)] = _move
                 else:
-                    simplified[move[1] + "x" + move[4:]] = unconfined[move]
+                    _move = move[1] + "x" + move[4:]
+                    simplified[_move] = unconfined[move]
+                    uci_map[self.convert_uci_moves(move)] = _move
             elif symbol in "Kk":
                 # there is only one king
-                simplified["K" + move[3:]] = unconfined[move]
+                _move = "K" + move[3:]
+                simplified[_move] = unconfined[move]
+                uci_map[self.convert_uci_moves(move)] = _move
 
             else:
                 if symbol in pieces:
@@ -824,14 +836,18 @@ class Chess:
                     else:
                         repe[move[-2:]].append(move)
                 else:
-                    simplified[move[0] + move[3:]] = unconfined[move]
+                    _move = move[0] + move[3:]
+                    simplified[_move] = unconfined[move]
+                    uci_map[self.convert_uci_moves(move)] = _move
 
         for square in repe.keys():
             length = len(repe[square])
 
             if length == 1:
                 move = repe[square][0]
-                simplified[move[0] + move[3:]] = unconfined[move]
+                _move = move[0] + move[3:]
+                simplified[_move] = unconfined[move]
+                uci_map[self.convert_uci_moves(move)] = _move
 
             elif length > 1:
                 for i in repe[square]:
@@ -846,11 +862,16 @@ class Chess:
                     if "0" in flag:
                         if "1" in flag:
                             simplified[i] = unconfined[i]
+                            uci_map[self.convert_uci_moves(i)] = i
                         else:
-                            simplified[i[0:2] + i[3:]] = unconfined[i]
+                            _move = i[0:2] + i[3:]
+                            simplified[_move] = unconfined[i]
+                            uci_map[self.convert_uci_moves(i)] = _move
                     else:
-                        simplified[i[0] + i[3:]] = unconfined[i]
-        return simplified
+                        _move = i[0] + i[3:]
+                        simplified[_move] = unconfined[i]
+                        uci_map[self.convert_uci_moves(i)] = _move
+        return simplified, uci_map
 
     def gather_confined(self, chess):
         unconfined = self.gather_unconfined(chess)
@@ -869,18 +890,36 @@ class Chess:
 
         return self.simplify_moves(chess, confined)
 
+    def convert_uci_moves(self, move, turn=None):
+        if move in ["O-O-O", "O-O"]:
+            move = self.rules_dict["uci_castle_move"][turn][move]
+        else:
+            move = move[1:]
+            if move[-1] in "+#":
+                move = move[:-1]
+            if "x" in move:
+                move = move[0:2] + move[3:]
+            if "=" in move:
+                move = move[0:4] + move[-1]
+        return move
+
     def gather_legal_moves(self, chess):
-        confined = self.gather_confined(chess)
+        confined, uci_map = self.gather_confined(chess)
         legal_moves = {}
         for move in confined.keys():
             if "+" in move:
-                if not self.gather_confined(confined[move]):
-                    legal_moves[move[0:-1] + "#"] = confined[move]
+                if not self.gather_confined(confined[move])[0]:
+                    _move = move[0:-1] + "#"
+                    legal_moves[_move] = confined[move]
+                    for i in uci_map.keys():
+                        if uci_map[i] == move:
+                            uci_map[i] = _move
+                            break
                 else:
                     legal_moves[move] = confined[move]
             else:
                 legal_moves[move] = confined[move]
-        return legal_moves
+        return {"nodes": legal_moves, "uci_map": uci_map}
 
     def gen_fen(self, chess):
         fen = ""
@@ -984,7 +1023,7 @@ class Chess:
                 "score": "",
             }
 
-        if not checking[oppo] and self.gather_legal_moves(chess) == {}:
+        if not checking[oppo] and self.gather_legal_moves(chess)["uci_map"] == {}:
             return {
                 "event": "game_over",
                 "result": "Stalemate.",
@@ -999,57 +1038,36 @@ from random import random, randint
 
 
 def engine(chess):
-    sleep(random())
     ch = Chess()
-    legal_moves = ch.gather_legal_moves(chess)
-    castling = []
-    capture = []
-    check = []
-    king = []
-    others = []
-    move = ""
-    for i in list(legal_moves.keys()):
-        if "#" in i:
-            return i, legal_moves[i]
-        elif i in ["O-O-O", "O-O"]:
-            castling.append(i)
-        elif "x" in i:
-            capture.append(i)
-        elif "+" in i:
-            check.append(i)
-        elif "K" in i:
-            king.append(i)
-        else:
-            others.append(i)
+    uci_map = ch.gather_legal_moves(chess)["uci_map"]
+    sleep(random())
 
-    if castling:
-        move = choice(castling)
-        return move, legal_moves[move]
-    elif capture:
-        if random() > 0.3:
-            move = choice(capture)
-            return move, legal_moves[move]
-    elif check:
-        if random() > 0.2:
-            move = choice(check)
-            return move, legal_moves[move]
-    elif others:
-        if random() > 0.5:
-            move = choice(others)
-            return move, legal_moves[move]
-    elif king:
-        if random() > 0.9:
-            move = choice(king)
-            return move, legal_moves[move]
+    for move in uci_map.keys():
+        if "#" in uci_map[move]:
+            return move
+    
+    for move in uci_map.keys():
+        if "+" in uci_map[move]:
+            if random() > 0.7:
+                return move
+    
+    for move in uci_map.keys():
+        if "x" in uci_map[move]:
+            if random() > 0.7:
+                return move
 
-    move = choice(list(legal_moves.keys()))
-    return move, legal_moves[move]
+    return choice(list(uci_map.keys()))
 
 
 if __name__ == "__main__":
     from vfunc import *
 
-    fen = "7k/8/8/3PpP2/8/8/8/2K5 w - e6 0 1"
+    fen = "6k1/8/8/8/8/8/7P/4K2R w K - 1 1"
     ch = Chess()
     chess = ch.convert(fen)
-    vfunc("speed", ch.convert, fen)
+    while True:
+        print(engine(chess))
+    # uc = ch.gather_unconfined(chess)
+    # # print(uc)
+    # lm = ch.gather_legal_moves(chess)
+    # print(lm["uci_map"])
