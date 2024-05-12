@@ -397,6 +397,11 @@ class GameThread(QThread):
         }
         self.engine = {}
         self.load_engine()
+        self.clock = {}
+        self.game_signal.connect(self.update_clock)
+
+    def update_clock(self, signal):
+        self.clock = json.loads(signal)
 
     def load_engine(self):
 
@@ -451,7 +456,8 @@ class GameThread(QThread):
         self.engine[turn].stdin.write("position fen {}\n".format(fen))
         self.engine[turn].stdin.flush()
         xtime = "wtime" if turn == "w" else "btime"
-        self.engine[turn].stdin.write("go {} 10000\n".format(xtime))
+        rest = self.clock[turn] * 1000
+        self.engine[turn].stdin.write("go {} {}\n".format(xtime, rest))
         self.engine[turn].stdin.flush()
         while True:
             resp = self.engine[turn].stdout.readline()
@@ -473,8 +479,7 @@ class GameThread(QThread):
                 legal_moves = self.ch.gather_legal_moves(self.packet["chess"])
 
                 move = self.ask_engine_to_move(
-                    self.packet["chess"]["turn"],
-                    self.ch.gen_fen(self.packet["chess"])
+                    self.packet["chess"]["turn"], self.ch.gen_fen(self.packet["chess"])
                 )
 
                 move = legal_moves["uci_map"][move]
@@ -727,6 +732,7 @@ class Hera(QMainWindow):
             self.display_clock()
             self.white_player.reset(config["installed"][config["engine_1"]]["tag"])
             self.black_player.reset(config["installed"][config["engine_2"]]["tag"])
+            self.game_signal.emit(json.dumps(self.clock))
             self.game_thread.start()
 
     def menu_keep_silent(self):
@@ -828,6 +834,7 @@ class Hera(QMainWindow):
                     used_time = timer() - self.last_move_ts
                     self.last_move_ts = timer()
                     self.clock[self.clock["turn"]] -= used_time
+                    self.game_signal.emit(json.dumps(self.clock))
                 else:
                     self.is_first_move_taken = True
                     self.last_move_ts = timer()

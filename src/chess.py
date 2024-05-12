@@ -900,7 +900,7 @@ class Chess:
             if "x" in move:
                 move = move[0:2] + move[3:]
             if "=" in move:
-                move = move[0:4] + move[-1]
+                move = move[0:4] + move[-1].lower()
         return move
 
     def gather_legal_moves(self, chess):
