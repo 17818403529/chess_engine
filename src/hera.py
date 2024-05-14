@@ -40,14 +40,14 @@ def convert_color(hexcolor):
     return QColor((hexcolor >> 16) & 0xFF, (hexcolor >> 8) & 0xFF, hexcolor & 0xFF)
 
 
-class nodeOver(QWidget):
+class GameOver(QWidget):
     def __init__(self, window):
         super().__init__()
         self.window = window
         self.initUI()
 
     def initUI(self):
-        self.setWindowTitle("node Over")
+        self.setWindowTitle("Game Over")
         self.setWindowFlags(
             Qt.WindowType.WindowCloseButtonHint
             | Qt.WindowType.WindowMaximizeButtonHint
@@ -210,23 +210,27 @@ class Board(QTableWidget):
             self.setColumnWidth(i, self.window.basic_size)
 
     def display_move(self, move, turn):
-        file, rank = self.window.ch.convert_square(move[0:2])
-        _file, _rank = self.window.ch.convert_square(move[2:4])
-        self.setCellWidget(7 - _rank, _file, self.cellWidget(7 - rank, file))
+        if len(move) == 2:
+            file, rank = self.window.ch.convert_square(move)
+            self.setCellWidget(7 - rank, file, Piece(""))
+        else:
+            file, rank = self.window.ch.convert_square(move[0:2])
+            _file, _rank = self.window.ch.convert_square(move[2:4])
+            self.setCellWidget(7 - _rank, _file, self.cellWidget(7 - rank, file))
 
-        if len(move) == 5:
-            symbol = move[4].upper() if turn == "b" else move[4]
-            piece = Piece(
-                self.window.piece_image[symbol], self.window.current_piece_style
-            )
-            self.setCellWidget(7 - _rank, _file, piece)
+            if len(move) == 5:
+                symbol = move[4].upper() if turn == "b" else move[4]
+                piece = Piece(
+                    self.window.piece_image[symbol], self.window.current_piece_style
+                )
+                self.setCellWidget(7 - _rank, _file, piece)
 
-    def display(self, chess):
+    def display_node(self, node):
         for square in self.window.ch.rules_dict["squares"]:
             file, rank = self.window.ch.convert_square(square)
-            if square not in chess["blank"]:
+            if square not in node["blank"]:
                 # put piece at a square if it is not blank
-                symbol = chess["pieces"][square]
+                symbol = node["pieces"][square]
                 piece = Piece(
                     self.window.piece_image[symbol], self.window.current_piece_style
                 )
@@ -382,18 +386,18 @@ class ClockThread(QThread):
                 self.clock[self.clock["turn"]] = 0
                 self.signal.emit(json.dumps(self.clock))
                 if oppo == "b":
-                    node_over = {
-                        "event": "node_over",
+                    game_over = {
+                        "event": "game_over",
                         "result": "Overtime, black wins.",
                         "score": "0 - 1",
                     }
                 else:
-                    node_over = {
-                        "event": "node_over",
+                    game_over = {
+                        "event": "game_over",
                         "result": "Overtime, white wins.",
                         "score": "1 - 0",
                     }
-                self.signal.emit(json.dumps(node_over))
+                self.signal.emit(json.dumps(game_over))
             else:
                 self.signal.emit(json.dumps(self.clock))
 
@@ -410,9 +414,7 @@ class GameThread(QThread):
         self.xtime = {"w": "wtime", "b": "btime"}
         self.packet = {
             "event": "node",
-            "move": "",
-            "uci_move": "",
-            "chess": self.ch.convert(fen),
+            "node": self.ch.convert_fen(fen),
         }
         self.engine = {}
         self.load_engine()
@@ -438,7 +440,6 @@ class GameThread(QThread):
             resp = engine_1.stdout.readline()
             if resp == "uciok\n":
                 break
-
         engine_1.stdin.write("isready\n")
         engine_1.stdin.flush()
         while True:
@@ -471,7 +472,9 @@ class GameThread(QThread):
         self.engine["w"] = engine_1
         self.engine["b"] = engine_2
 
-    def ask_engine_to_move(self, turn, fen):
+    def ask_engine_to_move(self, node):
+        fen = self.ch.gen_fen(node)
+        turn = node["turn"]
         self.engine[turn].stdin.write("position fen {}\n".format(fen))
         self.engine[turn].stdin.flush()
         self.engine[turn].stdin.write(
@@ -486,28 +489,29 @@ class GameThread(QThread):
 
     def run(self):
 
-        move = ""
-        self.signal.emit(json.dumps(self.packet))
         while True:
-            status = self.ch.is_game_over(self.packet["chess"], move, self.move_history)
+            self.signal.emit(json.dumps(self.packet))
+            status = self.ch.is_game_over(self.packet["node"], self.move_history)
             if status:
                 self.signal.emit(json.dumps(status))
                 break
 
             # get into the node loop
-            chess = self.packet["chess"]
-            legal_moves = self.ch.gather_legal_moves(chess)
-            move = self.ask_engine_to_move(chess["turn"], self.ch.gen_fen(chess))
+            node = self.packet["node"]
+            legal_nodes = self.ch.gather_legal_nodes(node)
+            move = self.ask_engine_to_move(node)
 
-            self.packet["uci_move"] = move
-            move = legal_moves["uci_map"][move]
-            chess = legal_moves["nodes"][move]
 
-            self.packet["move"] = move
-            self.packet["chess"] = chess
-            self.signal.emit(json.dumps(self.packet))
-
-            self.move_history.append(self.ch.gen_fen(chess).split()[0])
+            for i in legal_nodes:
+                if i["uci_move"] == move:
+                    self.packet["node"] = i
+                    self.move_history.append(self.ch.gen_fen(i).split()[0])
+                    break
+            
+            # for i in self.move_history:
+            #     print(i)
+            # print(self.ch.gen_fen(i))
+            # print(i["full_move"],i["uci_move"],i["display_move"],i["manual_move"])
 
 
 class Hera(QMainWindow):
@@ -542,7 +546,7 @@ class Hera(QMainWindow):
         # load Config and Resource Files
         self.piece_size = None
         self.is_silent = True
-        self.node_thread = None
+        self.game_thread = None
         self.clock_thread = None
         self.board_styles = config["board_styles"]
         self.current_board_style = config["board_styles"][config["current_board_style"]]
@@ -560,7 +564,7 @@ class Hera(QMainWindow):
         self.black_clock = Clock(self)
         self.white_player = Player("Spike 1.4", self)
         self.white_clock = Clock(self)
-        self.node_over = nodeOver(self)
+        self.game_over = GameOver(self)
         self.engine_management = EngineManagement(self)
 
         # setup color
@@ -583,7 +587,7 @@ class Hera(QMainWindow):
         self.ch = Chess()
         self.chess = None
         self.clock = None
-        self.node_thread = None
+        self.game_thread = None
         self.ClockThread = None
         self.move_history = []
         self.is_first_move_taken = None
@@ -734,22 +738,24 @@ class Hera(QMainWindow):
 
         if ok and fen:
             # close a running node if it exists
-            if self.node_thread:
-                self.node_thread.terminate()
+            if self.game_thread:
+                self.game_thread.terminate()
+                self.game_thread.engine["w"].kill()
+                self.game_thread.engine["b"].kill()
             if self.clock_thread:
                 self.clock_thread.terminate()
 
             # initialize node resources
-            self.node_thread = GameThread(self.node_signal, fen)
-            self.node_thread.signal.connect(self.extract_packet)
+            self.game_thread = GameThread(self.node_signal, fen)
+            self.game_thread.signal.connect(self.extract_packet)
             self.is_first_move_taken = False
-            self.clock = {"event": "clock", "w": 115, "b": 115, "step": 1, "turn": "w"}
+            self.clock = {"event": "clock", "w": 1, "b": 1, "step": 1, "turn": "w"}
             self.display_clock()
             self.move_history = ["placeholder"]
             self.white_player.reset(config["installed"][config["engine_1"]]["tag"])
             self.black_player.reset(config["installed"][config["engine_2"]]["tag"])
             self.node_signal.emit(json.dumps(self.clock))
-            self.node_thread.start()
+            self.game_thread.start()
 
     def menu_keep_silent(self):
         if self.is_silent:
@@ -836,16 +842,17 @@ class Hera(QMainWindow):
         packet = json.loads(signal)
 
         if packet["event"] == "node":
-            uci_move, move, chess = packet["uci_move"], packet["move"], packet["chess"]
-            self.board.nodes[move] = chess
+            node = packet["node"]
+            self.board.nodes[node["manual_move"]] = node
             if not self.is_manual_bar_activated:
-                if move == "":
-                    self.board.display(chess)
+                if node["manual_move"] == "":
+                    self.board.display_node(node)
                 else:
-                    self.board.display_move(uci_move, chess["turn"])
+                    for move in node["display_move"]:
+                        self.board.display_move(move, node["turn"])
                 self.move_to_display = len(self.move_history) - 1
 
-            if move:
+            if node["manual_move"]:
 
                 if self.is_first_move_taken:
                     used_time = timer() - self.last_move_ts
@@ -857,7 +864,7 @@ class Hera(QMainWindow):
                     self.last_move_ts = timer()
 
                 ts = timer()
-                self.clock["turn"] = chess["turn"]
+                self.clock["turn"] = node["turn"]
                 if self.clock_thread:
                     self.clock_thread.terminate()
                 self.clock_thread = ClockThread(self.clock)
@@ -865,19 +872,21 @@ class Hera(QMainWindow):
                 self.clock_thread.start()
 
                 # refresh manual area
-                turn, full = chess["turn"], int(chess["full"])
-                self.manual.append_move(move, turn, full)
+                turn, full = node["turn"], int(node["full"])
+                self.manual.append_move(node["manual_move"], turn, full)
 
         elif packet["event"] == "clock":
             self.last_move_ts = timer()
             self.clock = packet
             self.display_clock()
 
-        elif packet["event"] == "node_over":
+        elif packet["event"] == "game_over":
             if self.clock_thread:
                 self.clock_thread.terminate()
-            self.node_thread.terminate()
-            self.node_over.append_result(packet)
+            self.game_thread.terminate()
+            self.game_thread.engine["w"].kill()
+            self.game_thread.engine["b"].kill()
+            self.game_over.append_result(packet)
             self.manual.append_result(packet)
 
     def display_clock(self):

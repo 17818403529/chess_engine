@@ -141,7 +141,7 @@ class Chess:
     def __init__(self):
         self.gen_rules_dict()
 
-    def convert_fen_square(self, square):
+    def convert_square(self, square):
         return "abcdefgh".index(square[0]), "12345678".index(square[1])
 
     def gen_rules_dict(self):
@@ -475,8 +475,9 @@ class Chess:
                 "full": int(fen[5]),
                 "K": "",
                 "k": "",
-                "move": "",
+                "full_move": "",
                 "uci_move": "",
+                "display_move": [],
                 "manual_move": "",
             }
 
@@ -725,7 +726,8 @@ class Chess:
 
     def take_a_move(self, node, move):
         node = deepcopy(node)
-        node["move"] = move
+        node["full_move"] = move
+        node["display_move"] = []
         turn = node["turn"]
 
         if move in ["O-O", "O-O-O"]:
@@ -733,6 +735,8 @@ class Chess:
             symbol = self.rules_dict["castle_move"][turn]["symbol"][0]
             square, target = self.rules_dict["castle_move"][turn][move]["king"]
             node[symbol] = target
+            node["uci_move"] = square + target
+            node["display_move"].append(square + target)
             self.move_action(node, symbol, square, True, target)
 
             # alter castling possibility
@@ -741,6 +745,7 @@ class Chess:
             # rock move
             symbol = self.rules_dict["castle_move"][turn]["symbol"][1]
             square, target = self.rules_dict["castle_move"][turn][move]["rock"]
+            node["display_move"].append(square + target)
             self.move_action(node, symbol, square, True, target)
 
         else:
@@ -755,6 +760,13 @@ class Chess:
             if turn == "b":
                 symbol = symbol.lower()
 
+            if "=" in move:
+                node["uci_move"] = square + target + symbol.lower()
+                node["display_move"].append(square + target + symbol)
+            else:
+                node["uci_move"] = square + target
+                node["display_move"].append(square + target)
+
             self.move_action(node, symbol, square, not_taken, target)
 
             if symbol in "Pp" and target == node["passer"]:
@@ -763,6 +775,8 @@ class Chess:
                 del node["pieces"][passer]
                 node[node["oppo"]].remove(passer)
                 node["blank"].append(passer)
+
+                node["display_move"].append(passer)
 
             if symbol in "Kk":
                 # king position should be refreashed
@@ -817,13 +831,13 @@ class Chess:
 
         return node
 
-    def gen_uci_map(self, node, legal_nodes):
-        uci_map = {}
+    def gen_manual_move(self, node, legal_nodes):
+        manual_move = {}
         repe = {}
 
         legal_moves = []
         for i in legal_nodes:
-            legal_moves.append(i["move"])
+            legal_moves.append(i["full_move"])
 
         pieces = list(node["pieces"].values())
         index = "RNBQK" if node["turn"] == "w" else "rnbqk"
@@ -839,35 +853,31 @@ class Chess:
         for move in legal_moves:
             symbol = move[0] if node["turn"] == "w" else move[0].lower()
             if move in ["O-O-O", "O-O"]:
-                uci_map[self.convert_uic_move(move, node["turn"])] = move
+                manual_move[move] = move
             elif symbol in "Pp":
                 if move[3] != "x":
-                    uci_map[self.convert_uic_move(move, node["turn"])] = move[3:]
+                    manual_move[move] = move[3:]
                 else:
-                    uci_map[self.convert_uic_move(move, node["turn"])] = (
-                        move[1] + "x" + move[4:]
-                    )
+                    manual_move[move] = move[1] + "x" + move[4:]
             elif symbol in "Kk":
                 # there is only one king
-                uci_map[self.convert_uic_move(move, node["turn"])] = "K" + move[3:]
+                manual_move[move] = "K" + move[3:]
 
             else:
                 if symbol in pieces:
-                    if "+" in move:
+                    if "+" in move or "#" in move:
                         repe[move[-3:-1]].append(move)
                     else:
                         repe[move[-2:]].append(move)
                 else:
-                    uci_map[self.convert_uic_move(move, node["turn"])] = (
-                        move[0] + move[3:]
-                    )
+                    manual_move[move] = move[0] + move[3:]
 
         for square in repe.keys():
             length = len(repe[square])
 
             if length == 1:
                 move = repe[square][0]
-                uci_map[self.convert_uic_move(move, node["turn"])] = move[0] + move[3:]
+                manual_move[move] = move[0] + move[3:]
 
             elif length > 1:
                 for i in repe[square]:
@@ -881,17 +891,13 @@ class Chess:
 
                     if "0" in flag:
                         if "1" in flag:
-                            uci_map[self.convert_uic_move(i, node["turn"])] = i
+                            manual_move[i] = i
                         else:
-                            uci_map[self.convert_uic_move(i, node["turn"])] = (
-                                i[0:2] + i[3:]
-                            )
+                            manual_move[i] = i[0:2] + i[3:]
                     else:
-                        uci_map[self.convert_uic_move(i, node["turn"])] = (
-                            i[0] + i[3:]
-                        )
+                        manual_move[i] = i[0] + i[3:]
 
-        return uci_map
+        return manual_move
 
     def gather_confined(self, node):
         unconfined = self.gather_unconfined(node)
@@ -903,35 +909,26 @@ class Chess:
             if checking[node["oppo"]]:
                 continue
             elif checking[node["turn"]]:
-                _node["move"] = move + "+"
+                _node["full_move"] = move + "+"
             else:
-                _node["move"]
+                _node["full_move"] = move
             confined.append(_node)
 
         return confined
-
-    def convert_uic_move(self, move, turn=None):
-        if move in ["O-O-O", "O-O"]:
-            uci_move = self.rules_dict["uci_castle_move"][turn][move]
-        else:
-            uci_move = move[1:]
-            if move[-1] in "+#":
-                uci_move = move[1:-1]
-            if "x" in move:
-                uci_move = move[1:3] + move[4:]
-            if "=" in move:
-                uci_move = move[1:5] + move[-1].lower()
-        return uci_move
 
     def gather_legal_nodes(self, node):
         confined = self.gather_confined(node)
         legal_nodes = []
 
         for node in confined:
-            if "+" in node["move"]:
+            if "+" in node["full_move"]:
                 if not self.gather_confined(node):
-                    node["move"] = node["move"][0:-1] + "#"
+                    node["full_move"] = node["full_move"][0:-1] + "#"
             legal_nodes.append(node)
+
+        manual_move = self.gen_manual_move(node, legal_nodes)
+        for i in legal_nodes:
+            i["manual_move"] = manual_move[i["full_move"]]
 
         return legal_nodes
 
@@ -965,7 +962,7 @@ class Chess:
         )
         return fen
 
-    def is_game_over(self, node, move, move_history):
+    def is_game_over(self, node, move_history):
 
         if not node:
             return {
@@ -991,7 +988,7 @@ class Chess:
                         "score": "1/2  -  1/2",
                     }
 
-        if "#" in move:
+        if "#" in node["manual_move"]:
             if node["turn"] == "w":
                 return {
                     "event": "game_over",
@@ -1013,7 +1010,7 @@ class Chess:
             }
 
         # rep3 draw
-        if move_history.count(move_history[0]) == 3:
+        if move_history.count(move_history[-1]) == 3:
             return {
                 "event": "game_over",
                 "result": "Draw, rep3.",
@@ -1032,10 +1029,7 @@ class Chess:
                 "score": "",
             }
 
-        if (
-            not checking[node["oppo"]]
-            and self.gather_legal_nodes(node)["uci_map"] == {}
-        ):
+        if not checking[node["oppo"]] and self.gather_legal_nodes(node) == []:
             return {
                 "event": "game_over",
                 "result": "Stalemate.",
@@ -1053,11 +1047,10 @@ class Chess:
 
 if __name__ == "__main__":
     ch = Chess()
-    fen = "8/3k4/8/5r2/3N3N/8/8/R3K3 w Q - 0 1"
+    fen = "r1b2rk1/1p2ppbp/pqn3p1/1BppP3/P2Pn3/2P2N1P/1P3PP1/RNBQR1K1 w - - 0 11"
+    move_history = ["sdfds"]
     node = ch.convert_fen(fen)
-    legal_nodes = ch.gather_legal_nodes(node)
+    print(ch.is_game_over(node, move_history))
+    # legal_nodes = ch.gather_legal_nodes(node)
     # for node in legal_nodes:
-    #     print(node["move"])
-    uci_map = ch.gen_uci_map(node, legal_nodes)
-    for i in uci_map.keys():
-        print(i,uci_map[i])
+    #     print(node["full_move"], node["uci_move"], node["manual_move"],node["display_move"])
