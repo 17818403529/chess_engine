@@ -4,7 +4,7 @@ from random import choice
 
 class Piece:
 
-    def chess_arith(square, vec, steps):
+    def node_arith(square, vec, steps):
         file = "abcdefgh".index(square[0]) + steps * vec[0]
         rank = "12345678".index(square[1]) + steps * vec[1]
         if file in range(0, 8) and rank in range(0, 8):
@@ -17,7 +17,7 @@ class Piece:
         for vec in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
             direc = []
             for steps in range(1, 8):
-                des = Piece.chess_arith(square, vec, steps)
+                des = Piece.node_arith(square, vec, steps)
                 if des:
                     direc.append(des)
                 else:
@@ -48,7 +48,7 @@ class Piece:
         for vec in [(1, 1), (-1, -1), (-1, 1), (1, -1)]:
             direc = []
             for steps in range(1, 8):
-                des = Piece.chess_arith(square, vec, steps)
+                des = Piece.node_arith(square, vec, steps)
                 if des:
                     direc.append(des)
                 else:
@@ -71,7 +71,7 @@ class Piece:
         ]:
             direc = []
             for steps in range(1, 8):
-                des = Piece.chess_arith(square, vec, steps)
+                des = Piece.node_arith(square, vec, steps)
                 if des:
                     direc.append(des)
                 else:
@@ -92,7 +92,7 @@ class Piece:
             (0, -1),
             (0, 1),
         ]:
-            _target = Piece.chess_arith(square, vec, 1)
+            _target = Piece.node_arith(square, vec, 1)
             if _target:
                 target.append(_target)
         return target
@@ -102,14 +102,14 @@ class Piece:
         straight = []
         capture = []
 
-        des = Piece.chess_arith(square, (0, -1), 1)
+        des = Piece.node_arith(square, (0, -1), 1)
         straight.append(des)
 
         if square[1] == "7":
-            straight.append(Piece.chess_arith(square, (0, -1), 2))
+            straight.append(Piece.node_arith(square, (0, -1), 2))
 
         for vec in [(-1, -1), (1, -1)]:
-            _target = Piece.chess_arith(square, vec, 1)
+            _target = Piece.node_arith(square, vec, 1)
             if _target:
                 capture.append(_target)
 
@@ -122,13 +122,13 @@ class Piece:
         straight = []
         capture = []
 
-        straight.append(Piece.chess_arith(square, (0, 1), 1))
+        straight.append(Piece.node_arith(square, (0, 1), 1))
 
         if square[1] == "2":
-            straight.append(Piece.chess_arith(square, (0, 1), 2))
+            straight.append(Piece.node_arith(square, (0, 1), 2))
 
         for vec in [(-1, 1), (1, 1)]:
-            _target = Piece.chess_arith(square, vec, 1)
+            _target = Piece.node_arith(square, vec, 1)
             if _target:
                 capture.append(_target)
 
@@ -141,7 +141,7 @@ class Chess:
     def __init__(self):
         self.gen_rules_dict()
 
-    def convert_square(self, square):
+    def convert_fen_square(self, square):
         return "abcdefgh".index(square[0]), "12345678".index(square[1])
 
     def gen_rules_dict(self):
@@ -440,24 +440,44 @@ class Chess:
         }
         self.rules_dict["passer_square"] = passer_square
 
-    def convert(self, fen):
+        piece_value = {
+            "r": -4.5,
+            "n": -3.0,
+            "b": -3.0,
+            "q": -9.0,
+            "p": -1.0,
+            "k": 0.0,
+            "R": 4.5,
+            "N": 3.0,
+            "B": 3.0,
+            "Q": 9.0,
+            "P": 1.0,
+            "K": 0.0,
+        }
+        self.rules_dict["piece_value"] = piece_value
+
+    def convert_fen(self, fen):
         fen = fen.split()
         # a unchecked fen must have 6 parts
         if len(fen) != 6:
             return False
         else:
-            chess = {
+            node = {
                 "pieces": {},
                 "blank": [],
                 "w": [],
                 "b": [],
                 "turn": fen[1],
+                "oppo": "w" if fen[1] == "b" else "b",
                 "castle": "",
                 "passer": fen[3],
                 "half": int(fen[4]),
                 "full": int(fen[5]),
                 "K": "",
                 "k": "",
+                "move": "",
+                "uci_move": "",
+                "manual_move": "",
             }
 
         # fen[0] is Piece Placement
@@ -485,14 +505,14 @@ class Chess:
                 file = 0
 
             elif i in "12345678":
-                # alter "blank squares" in chess
+                # alter "blank squares" in node
                 if file == 8:
                     return False
                 square = "abcdefgh"[file] + "12345678"[rank - 1]
                 file = file + int(i)
                 if file > 8:
                     return False
-                chess["blank"] += self.rules_dict["blank"][square][str(int(i))]
+                node["blank"] += self.rules_dict["blank"][square][str(int(i))]
 
             elif i in "rbnqkpRBNQKP":
                 # alter the packed when meets with a piece
@@ -501,19 +521,19 @@ class Chess:
                     return False
                 packed[8 - rank][file - 1] = i
 
-                # fill pieces and their squares in chess
+                # fill pieces and their squares in node
                 square = "abcdefgh"[file - 1] + "12345678"[rank - 1]
 
-                # when meets with a king, fill in the information in chess
+                # when meets with a king, fill in the information in node
                 if i in "kK":
                     kings[i] += 1
-                    chess[i] = square
+                    node[i] = square
 
-                chess["pieces"][square] = i
+                node["pieces"][square] = i
                 if i in "rbnqkp":
-                    chess["b"].append(square)
+                    node["b"].append(square)
                 else:
-                    chess["w"].append(square)
+                    node["w"].append(square)
             else:
                 return False
 
@@ -534,7 +554,7 @@ class Chess:
         if fen[1] not in "wb":
             return False
         else:
-            chess["turn"] = fen[1]
+            node["turn"] = fen[1]
 
         # fen[2] shows Castling Rights
 
@@ -555,7 +575,7 @@ class Chess:
             if i not in castle:
                 return False
 
-        chess["castle"] = fen[2]
+        node["castle"] = fen[2]
 
         # fen[3] shows Possible En Passant Targets
         passer = fen[3]
@@ -564,25 +584,25 @@ class Chess:
                 # passers only appears at certain squares
                 return False
             else:
-                # passer must have at least one opposite pawn neighbor
+                # passer must have at least one node["oppo"]site pawn neighbor
                 flag = False
                 pawn = "P" if fen[1] == "w" else "p"
                 for square in self.rules_dict["possible_en"][passer]:
-                    if square in chess[fen[1]]:
-                        if chess["pieces"][square] == pawn:
+                    if square in node[fen[1]]:
+                        if node["pieces"][square] == pawn:
                             flag = True
                             break
                 if not flag:
                     return False
 
-        return chess
+        return node
 
-    def is_square_attacked(self, chess, square, side):
-        if square in chess[side]:
+    def is_square_attacked(self, node, square, side):
+        if square in node[side]:
             return False
 
-        for _square in chess[side]:
-            symbol = chess["pieces"][_square]
+        for _square in node[side]:
+            symbol = node["pieces"][_square]
             unconfined = self.rules_dict["unconfined"][symbol][_square]
 
             if symbol in "RBQrbq":
@@ -590,7 +610,7 @@ class Chess:
                     for i in direc:
                         if i == square:
                             return True
-                        elif i not in chess["blank"]:
+                        elif i not in node["blank"]:
                             break
 
             elif symbol in "KNkn":
@@ -604,50 +624,37 @@ class Chess:
                         return True
         return False
 
-    def is_checking(self, chess):
-        result = {}
-        result["b"] = self.is_square_attacked(chess, chess["K"], "b")
-        result["w"] = self.is_square_attacked(chess, chess["k"], "w")
-        return result
+    def is_checking(self, node):
+        checking = {}
+        checking["b"] = self.is_square_attacked(node, node["K"], "b")
+        checking["w"] = self.is_square_attacked(node, node["k"], "w")
+        return checking
 
-    castle_squares = {
-        "w": {
-            "O-O": [["e1", "f1", "g1"], ["f1", "g1"]],
-            "O-O-O": [["c1", "d1", "e1"], ["b1", "c1", "d1"]],
-        },
-        "b": {
-            "O-O": [["e8", "f8", "g8"], ["f8", "g8"]],
-            "O-O-O": [["c8", "d8", "e8"], ["b8", "c8", "d8"]],
-        },
-    }
-
-    def gather_castlings(self, chess):
+    def gather_castlings(self, node):
         # gather all possible castlings
         castlings = []
-        oppo = "w" if chess["turn"] == "b" else "b"
-        unconfined = self.rules_dict["castle_map"][chess["castle"]][chess["turn"]]
+        unconfined = self.rules_dict["castle_map"][node["castle"]][node["turn"]]
         for move in unconfined:
             flag = True
-            king_path, region = self.rules_dict["castle_squares"][chess["turn"]][move]
+            king_path, region = self.rules_dict["castle_squares"][node["turn"]][move]
             for square in region:
-                if square not in chess["blank"]:
+                if square not in node["blank"]:
                     flag = False
                     break
             if flag:
                 for square in king_path:
-                    if self.is_square_attacked(chess, square, oppo):
+                    if self.is_square_attacked(node, square, node["oppo"]):
                         flag = False
                         break
             if flag:
                 castlings.append(move)
         return castlings
 
-    def gather_unconfined(self, chess):
-        unconfined = self.gather_castlings(chess)
-        oppo = "w" if chess["turn"] == "b" else "b"
+    def gather_unconfined(self, node):
+        unconfined = self.gather_castlings(node)
 
-        for square in chess[chess["turn"]]:
-            symbol = chess["pieces"][square]
+        for square in node[node["turn"]]:
+            symbol = node["pieces"][square]
             targets = self.rules_dict["unconfined"][symbol][square]
             symbol = symbol.upper()
 
@@ -655,9 +662,9 @@ class Chess:
                 # Rock, Biship, Queen
                 for direc in targets:
                     for i in direc:
-                        if i in chess["blank"]:
+                        if i in node["blank"]:
                             unconfined.append(symbol + square + i)
-                        elif i in chess[oppo]:
+                        elif i in node[node["oppo"]]:
                             unconfined.append(symbol + square + "x" + i)
                             break
                         else:
@@ -666,15 +673,15 @@ class Chess:
             elif symbol in "KN":
                 # King and Knight
                 for i in targets:
-                    if i in chess["blank"]:
+                    if i in node["blank"]:
                         unconfined.append(symbol + square + i)
-                    elif i in chess[oppo]:
+                    elif i in node[node["oppo"]]:
                         unconfined.append(symbol + square + "x" + i)
 
             else:
                 # pawns
                 for i in targets[0]:
-                    if i in chess["blank"]:
+                    if i in node["blank"]:
                         if i[1] in "18":
                             # pawn promotion
                             for asc in "RNBQ":
@@ -685,55 +692,56 @@ class Chess:
                         break
 
                 for i in targets[1]:
-                    if i in chess[oppo]:
+                    if i in node[node["oppo"]]:
                         if i[1] in "18":
                             # pawn promotion
                             for asc in "RNBQ":
                                 unconfined.append("P" + square + "x" + i + "=" + asc)
                         else:
                             unconfined.append("P" + square + "x" + i)
-                    elif i == chess["passer"]:
+                    elif i == node["passer"]:
                         unconfined.append("P" + square + "x" + i)
 
         return unconfined
 
-    def move_action(self, chess, symbol, square, not_taken, target):
+    def move_action(self, node, symbol, square, not_taken, target):
         # symbol from square moves to target, taken or not taken
-        chess[chess["turn"]].remove(square)
-        chess["blank"].append(square)
-        chess[chess["turn"]].append(target)
 
-        del chess["pieces"][square]
-        chess["pieces"][target] = symbol
+        node[node["turn"]].remove(square)
+        node["blank"].append(square)
+        node[node["turn"]].append(target)
 
-        if symbol in "Pp" and target == chess["passer"]:
-            chess["blank"].remove(target)
+        del node["pieces"][square]
+        node["pieces"][target] = symbol
+
+        if symbol in "Pp" and target == node["passer"]:
+            node["blank"].remove(target)
         else:
             if not_taken:
-                chess["blank"].remove(target)
+                node["blank"].remove(target)
             else:
-                oppo = "w" if chess["turn"] == "b" else "b"
-                chess[oppo].remove(target)
+                node["oppo"] = "w" if node["turn"] == "b" else "b"
+                node[node["oppo"]].remove(target)
 
-    def take_a_move(self, chess, move):
-        chess = deepcopy(chess)
-        player = chess["turn"]
-        oppo = "w" if player == "b" else "b"
+    def take_a_move(self, node, move):
+        node = deepcopy(node)
+        node["move"] = move
+        turn = node["turn"]
 
         if move in ["O-O", "O-O-O"]:
             # king move
-            symbol = self.rules_dict["castle_move"][player]["symbol"][0]
-            square, target = self.rules_dict["castle_move"][player][move]["king"]
-            chess[symbol] = target
-            self.move_action(chess, symbol, square, True, target)
+            symbol = self.rules_dict["castle_move"][turn]["symbol"][0]
+            square, target = self.rules_dict["castle_move"][turn][move]["king"]
+            node[symbol] = target
+            self.move_action(node, symbol, square, True, target)
 
             # alter castling possibility
-            chess["castle"] = self.rules_dict["castle_rights"][symbol][chess["castle"]]
+            node["castle"] = self.rules_dict["castle_rights"][symbol][node["castle"]]
 
             # rock move
-            symbol = self.rules_dict["castle_move"][player]["symbol"][1]
-            square, target = self.rules_dict["castle_move"][player][move]["rock"]
-            self.move_action(chess, symbol, square, True, target)
+            symbol = self.rules_dict["castle_move"][turn]["symbol"][1]
+            square, target = self.rules_dict["castle_move"][turn][move]["rock"]
+            self.move_action(node, symbol, square, True, target)
 
         else:
             if "x" in move:
@@ -744,62 +752,81 @@ class Chess:
             if "=" in move:
                 symbol = move[-1]
 
-            if player == "b":
+            if turn == "b":
                 symbol = symbol.lower()
 
-            self.move_action(chess, symbol, square, not_taken, target)
+            self.move_action(node, symbol, square, not_taken, target)
 
-            if symbol in "Pp" and target == chess["passer"]:
+            if symbol in "Pp" and target == node["passer"]:
                 # eat passers-by
-                passer = self.rules_dict["passer_square"][chess["passer"]]
-                del chess["pieces"][passer]
-                chess[oppo].remove(passer)
-                chess["blank"].append(passer)
+                passer = self.rules_dict["passer_square"][node["passer"]]
+                del node["pieces"][passer]
+                node[node["oppo"]].remove(passer)
+                node["blank"].append(passer)
 
             if symbol in "Kk":
                 # king position should be refreashed
-                chess[symbol] = target
-                chess["castle"] = self.rules_dict["castle_rights"][symbol][
-                    chess["castle"]
+                node[symbol] = target
+                node["castle"] = self.rules_dict["castle_rights"][symbol][
+                    node["castle"]
                 ]
 
             if symbol in "Rr":
                 # castling is segmentally not possible after the rock has moved
                 if square in self.rules_dict["castle_rights"][symbol].keys():
-                    chess["castle"] = self.rules_dict["castle_rights"][symbol][square][
-                        chess["castle"]
+                    node["castle"] = self.rules_dict["castle_rights"][symbol][square][
+                        node["castle"]
                     ]
 
-            chess["passer"] = "-"
+            # when takes a rock of the node["oppo"] side
+            if (
+                turn == "b"
+                and target in ["a1", "h1"]
+                or turn == "w"
+                and target in ["a8", "h8"]
+            ):
+                rock = "R" if turn == "b" else "r"
+                node["castle"] = self.rules_dict["castle_rights"][rock][target][
+                    node["castle"]
+                ]
+
+            node["passer"] = "-"
             if move in self.rules_dict["passer_move"]:
                 passer = self.rules_dict["en_passant_targets"][move]
                 for square in self.rules_dict["possible_en"][passer]:
-                    if square in chess[oppo]:
-                        if chess["pieces"][square] in "Pp":
-                            chess["passer"] = passer
+                    if square in node[node["oppo"]]:
+                        if node["pieces"][square] in "Pp":
+                            node["passer"] = passer
 
         # alter turn
-        chess["turn"] = "b" if chess["turn"] == "w" else "w"
+        node["turn"] = "b" if node["turn"] == "w" else "w"
 
         # alter half
         if move[0] in "Pp" or "x" in move:
-            chess["half"] = "0"
+            node["half"] = "0"
         else:
-            chess["half"] = str(int(chess["half"]) + 1)
+            node["half"] = str(int(node["half"]) + 1)
 
         # alter full
-        if player == "b":
-            chess["full"] = str(int(chess["full"]) + 1)
+        if turn == "b":
+            node["full"] = str(int(node["full"]) + 1)
 
-        return chess
+        # alter turn
+        node["turn"] = node["oppo"]
+        node["oppo"] = turn
 
-    def simplify_moves(self, chess, unconfined):
-        simplified = {}
+        return node
+
+    def gen_uci_map(self, node, legal_nodes):
         uci_map = {}
         repe = {}
 
-        pieces = list(chess["pieces"].values())
-        index = "RNBQK" if chess["turn"] == "w" else "rnbqk"
+        legal_moves = []
+        for i in legal_nodes:
+            legal_moves.append(i["move"])
+
+        pieces = list(node["pieces"].values())
+        index = "RNBQK" if node["turn"] == "w" else "rnbqk"
 
         for i in index:
             if i in pieces:
@@ -809,25 +836,20 @@ class Chess:
             for rank in "12345678":
                 repe[file + rank] = []
 
-        for move in unconfined:
-            symbol = move[0] if chess["turn"] == "w" else move[0].lower()
+        for move in legal_moves:
+            symbol = move[0] if node["turn"] == "w" else move[0].lower()
             if move in ["O-O-O", "O-O"]:
-                simplified[move] = unconfined[move]
-                uci_map[self.convert_uci_moves(move, chess["turn"])] = move
+                uci_map[self.convert_uic_move(move, node["turn"])] = move
             elif symbol in "Pp":
                 if move[3] != "x":
-                    _move = move[3:]
-                    simplified[_move] = unconfined[move]
-                    uci_map[self.convert_uci_moves(move)] = _move
+                    uci_map[self.convert_uic_move(move, node["turn"])] = move[3:]
                 else:
-                    _move = move[1] + "x" + move[4:]
-                    simplified[_move] = unconfined[move]
-                    uci_map[self.convert_uci_moves(move)] = _move
+                    uci_map[self.convert_uic_move(move, node["turn"])] = (
+                        move[1] + "x" + move[4:]
+                    )
             elif symbol in "Kk":
                 # there is only one king
-                _move = "K" + move[3:]
-                simplified[_move] = unconfined[move]
-                uci_map[self.convert_uci_moves(move)] = _move
+                uci_map[self.convert_uic_move(move, node["turn"])] = "K" + move[3:]
 
             else:
                 if symbol in pieces:
@@ -836,18 +858,16 @@ class Chess:
                     else:
                         repe[move[-2:]].append(move)
                 else:
-                    _move = move[0] + move[3:]
-                    simplified[_move] = unconfined[move]
-                    uci_map[self.convert_uci_moves(move)] = _move
+                    uci_map[self.convert_uic_move(move, node["turn"])] = (
+                        move[0] + move[3:]
+                    )
 
         for square in repe.keys():
             length = len(repe[square])
 
             if length == 1:
                 move = repe[square][0]
-                _move = move[0] + move[3:]
-                simplified[_move] = unconfined[move]
-                uci_map[self.convert_uci_moves(move)] = _move
+                uci_map[self.convert_uic_move(move, node["turn"])] = move[0] + move[3:]
 
             elif length > 1:
                 for i in repe[square]:
@@ -861,79 +881,73 @@ class Chess:
 
                     if "0" in flag:
                         if "1" in flag:
-                            simplified[i] = unconfined[i]
-                            uci_map[self.convert_uci_moves(i)] = i
+                            uci_map[self.convert_uic_move(i, node["turn"])] = i
                         else:
-                            _move = i[0:2] + i[3:]
-                            simplified[_move] = unconfined[i]
-                            uci_map[self.convert_uci_moves(i)] = _move
+                            uci_map[self.convert_uic_move(i, node["turn"])] = (
+                                i[0:2] + i[3:]
+                            )
                     else:
-                        _move = i[0] + i[3:]
-                        simplified[_move] = unconfined[i]
-                        uci_map[self.convert_uci_moves(i)] = _move
-        return simplified, uci_map
+                        uci_map[self.convert_uic_move(i, node["turn"])] = (
+                            i[0] + i[3:]
+                        )
 
-    def gather_confined(self, chess):
-        unconfined = self.gather_unconfined(chess)
-        confined = {}
+        return uci_map
+
+    def gather_confined(self, node):
+        unconfined = self.gather_unconfined(node)
+        confined = []
 
         for move in unconfined:
-            _chess = self.take_a_move(chess, move)
-            checking = self.is_checking(_chess)
-            oppo = "b" if chess["turn"] == "w" else "w"
-            if checking[oppo]:
+            _node = self.take_a_move(node, move)
+            checking = self.is_checking(_node)
+            if checking[node["oppo"]]:
                 continue
-            elif checking[chess["turn"]]:
-                confined[move + "+"] = _chess
+            elif checking[node["turn"]]:
+                _node["move"] = move + "+"
             else:
-                confined[move] = _chess
+                _node["move"]
+            confined.append(_node)
 
-        return self.simplify_moves(chess, confined)
+        return confined
 
-    def convert_uci_moves(self, move, turn=None):
+    def convert_uic_move(self, move, turn=None):
         if move in ["O-O-O", "O-O"]:
-            move = self.rules_dict["uci_castle_move"][turn][move]
+            uci_move = self.rules_dict["uci_castle_move"][turn][move]
         else:
-            move = move[1:]
+            uci_move = move[1:]
             if move[-1] in "+#":
-                move = move[:-1]
+                uci_move = move[1:-1]
             if "x" in move:
-                move = move[0:2] + move[3:]
+                uci_move = move[1:3] + move[4:]
             if "=" in move:
-                move = move[0:4] + move[-1].lower()
-        return move
+                uci_move = move[1:5] + move[-1].lower()
+        return uci_move
 
-    def gather_legal_moves(self, chess):
-        confined, uci_map = self.gather_confined(chess)
-        legal_moves = {}
-        for move in confined.keys():
-            if "+" in move:
-                if not self.gather_confined(confined[move])[0]:
-                    _move = move[0:-1] + "#"
-                    legal_moves[_move] = confined[move]
-                    for i in uci_map.keys():
-                        if uci_map[i] == move:
-                            uci_map[i] = _move
-                            break
-                else:
-                    legal_moves[move] = confined[move]
-            else:
-                legal_moves[move] = confined[move]
-        return {"nodes": legal_moves, "uci_map": uci_map}
+    def gather_legal_nodes(self, node):
+        confined = self.gather_confined(node)
+        legal_nodes = []
 
-    def gen_fen(self, chess):
+        for node in confined:
+            if "+" in node["move"]:
+                if not self.gather_confined(node):
+                    node["move"] = node["move"][0:-1] + "#"
+            legal_nodes.append(node)
+
+        return legal_nodes
+
+    def gen_fen(self, node):
         fen = ""
         for rank in "87654321":
             empty = 0
             for file in "abcdefgh":
                 square = file + rank
-                if square in chess["blank"]:
+                if square in node["blank"]:
                     empty += 1
                 else:
                     if empty:
                         fen += str(empty)
                         empty = 0
-                    fen += chess["pieces"][square]
+                    fen += node["pieces"][square]
 
                 if file == "h":
                     if empty:
@@ -943,17 +957,17 @@ class Chess:
         fen = fen[0:-1]
 
         fen += " {} {} {} {} {}".format(
-            chess["turn"],
-            chess["castle"],
-            chess["passer"],
-            chess["half"],
-            chess["full"],
+            node["turn"],
+            node["castle"],
+            node["passer"],
+            node["half"],
+            node["full"],
         )
         return fen
 
-    def is_game_over(self, chess, move, move_history):
+    def is_game_over(self, node, move, move_history):
 
-        if not chess:
+        if not node:
             return {
                 "event": "game_over",
                 "result": "Illegal FEN.",
@@ -961,15 +975,15 @@ class Chess:
             }
 
         # insufficient force
-        if len(chess["blank"]) == 62:
+        if len(node["blank"]) == 62:
             return {
                 "event": "game_over",
                 "result": "Draw, understrength.",
                 "score": "1/2  -  1/2",
             }
 
-        if len(chess["blank"]) == 61:
-            for i in chess["pieces"].values():
+        if len(node["blank"]) == 61:
+            for i in node["pieces"].values():
                 if i in "BbNn":
                     return {
                         "event": "game_over",
@@ -978,7 +992,7 @@ class Chess:
                     }
 
         if "#" in move:
-            if chess["turn"] == "w":
+            if node["turn"] == "w":
                 return {
                     "event": "game_over",
                     "result": "Checkmate, black wins.",
@@ -991,7 +1005,7 @@ class Chess:
                     "score": "1 - 0",
                 }
 
-        if chess["half"] == 100:
+        if node["half"] == 100:
             return {
                 "event": "game_over",
                 "result": "Draw, 50 moves.",
@@ -999,31 +1013,29 @@ class Chess:
             }
 
         # rep3 draw
-        placement = list(move_history.values())
-        placement.reverse()
-        repeated = 0
-        for i in placement:
-            if i == placement[0]:
-                repeated += 1
-                if repeated == 4:
-                    return {
-                        "event": "game_over",
-                        "result": "Draw, rep3.",
-                        "score": "1/2  -  1/2",
-                    }
+        if move_history.count(move_history[0]) == 3:
+            return {
+                "event": "game_over",
+                "result": "Draw, rep3.",
+                "score": "1/2  -  1/2",
+            }
 
-        player = chess["turn"]
-        oppo = "b" if player == "w" else "w"
-        checking = self.is_checking(chess)
+        # other circumstances
+        turn = node["turn"]
+        node["oppo"] = "b" if turn == "w" else "w"
+        checking = self.is_checking(node)
 
-        if checking[player]:
+        if checking[turn]:
             return {
                 "event": "game_over",
                 "result": "Illegal FEN.",
                 "score": "",
             }
 
-        if not checking[oppo] and self.gather_legal_moves(chess)["uci_map"] == {}:
+        if (
+            not checking[node["oppo"]]
+            and self.gather_legal_nodes(node)["uci_map"] == {}
+        ):
             return {
                 "event": "game_over",
                 "result": "Stalemate.",
@@ -1032,42 +1044,20 @@ class Chess:
 
         return False
 
-
-from time import sleep
-from random import random, randint
-
-
-def engine(chess):
-    ch = Chess()
-    uci_map = ch.gather_legal_moves(chess)["uci_map"]
-    sleep(random())
-
-    for move in uci_map.keys():
-        if "#" in uci_map[move]:
-            return move
-    
-    for move in uci_map.keys():
-        if "+" in uci_map[move]:
-            if random() > 0.7:
-                return move
-    
-    for move in uci_map.keys():
-        if "x" in uci_map[move]:
-            if random() > 0.7:
-                return move
-
-    return choice(list(uci_map.keys()))
+    def cal_score(self, node):
+        score = 0
+        for i in node["pieces"].values():
+            score += self.rules_dict["piece_value"][i]
+        return score
 
 
 if __name__ == "__main__":
-    from vfunc import *
-
-    fen = "6k1/8/8/8/8/8/7P/4K2R w K - 1 1"
     ch = Chess()
-    chess = ch.convert(fen)
-    while True:
-        print(engine(chess))
-    # uc = ch.gather_unconfined(chess)
-    # # print(uc)
-    # lm = ch.gather_legal_moves(chess)
-    # print(lm["uci_map"])
+    fen = "8/3k4/8/5r2/3N3N/8/8/R3K3 w Q - 0 1"
+    node = ch.convert_fen(fen)
+    legal_nodes = ch.gather_legal_nodes(node)
+    # for node in legal_nodes:
+    #     print(node["move"])
+    uci_map = ch.gen_uci_map(node, legal_nodes)
+    for i in uci_map.keys():
+        print(i,uci_map[i])
